@@ -8,261 +8,359 @@ import json
 import os
 import warnings
 import logging
+import time
+import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# ----- Five fundamental data libraries -----
+try:
+    import xfinlink as xfl
+    XFL_AVAILABLE = True
+except ImportError:
+    XFL_AVAILABLE = False
+
+try:
+    from alpha_vantage.fundamentaldata import FundamentalData
+    ALPHA_VANTAGE_AVAILABLE = True
+except ImportError:
+    ALPHA_VANTAGE_AVAILABLE = False
+
+try:
+    from financialmodelingprep import FinancialModelingPrep
+    FMP_AVAILABLE = True
+except ImportError:
+    FMP_AVAILABLE = False
+
+try:
+    from tiingo import TiingoClient
+    TIINGO_AVAILABLE = True
+except ImportError:
+    TIINGO_AVAILABLE = False
+
+# API keys from environment
+ALPHA_VANTAGE_KEY = os.environ.get("ALPHA_VANTAGE_KEY", "")
+FMP_API_KEY = os.environ.get("FMP_API_KEY", "")
+TIINGO_API_KEY = os.environ.get("TIINGO_API_KEY", "")
 
 warnings.filterwarnings("ignore")
 logging.getLogger("streamlit").setLevel(logging.ERROR)
-
-st.set_page_config(page_title="Global Investment Dashboard", layout="wide", page_icon="📊")
+st.set_page_config(page_title="Global Buffett Screener", layout="wide", page_icon="📊")
 
 # ============================================
-# GLOBAL TICKER DATABASE (with region & country)
-# Includes North America, South America, Europe, Asia
+# 1. BUILD LARGE TICKER UNIVERSE (15,000+ ASSETS)
 # ============================================
 @st.cache_data(ttl=86400)
-def get_global_tickers():
-    tickers = {
-        # North America - USA
-        "AAPL": "Apple Inc.", "MSFT": "Microsoft Corp.", "GOOGL": "Alphabet Inc.",
-        "AMZN": "Amazon.com Inc.", "TSLA": "Tesla Inc.", "META": "Meta Platforms",
-        "NVDA": "NVIDIA Corp.", "BRK-B": "Berkshire Hathaway", "JPM": "JPMorgan Chase",
-        "V": "Visa Inc.", "JNJ": "Johnson & Johnson", "WMT": "Walmart Inc.",
-        "PG": "Procter & Gamble", "UNH": "UnitedHealth", "HD": "Home Depot",
-        "DIS": "Walt Disney", "MA": "Mastercard", "BAC": "Bank of America",
-        "NFLX": "Netflix", "KO": "Coca-Cola", "PEP": "PepsiCo", "INTC": "Intel",
-        "CSCO": "Cisco Systems", "ADBE": "Adobe", "CRM": "Salesforce", "COST": "Costco",
-        "CVX": "Chevron", "XOM": "Exxon Mobil", "WFC": "Wells Fargo", "QCOM": "Qualcomm",
-        "TXN": "Texas Instruments", "AMGN": "Amgen", "HON": "Honeywell",
-        "LMT": "Lockheed Martin", "UPS": "UPS", "IBM": "IBM", "SBUX": "Starbucks",
-        "NKE": "Nike", "BA": "Boeing", "GE": "General Electric", "CAT": "Caterpillar",
-        "GS": "Goldman Sachs", "MS": "Morgan Stanley", "BLK": "BlackRock",
-        "AXP": "American Express", "VZ": "Verizon", "T": "AT&T", "RTX": "Raytheon",
-        "LOW": "Lowe's", "PYPL": "PayPal", "INTU": "Intuit", "MDT": "Medtronic",
-        "ISRG": "Intuitive Surgical", "NOW": "ServiceNow", "SYK": "Stryker",
-        "TGT": "Target", "CI": "Cigna", "ZTS": "Zoetis", "DUK": "Duke Energy",
-        "MO": "Altria", "USB": "U.S. Bancorp", "PNC": "PNC Financial",
-        "COF": "Capital One", "EMR": "Emerson Electric", "MMM": "3M",
-        "APD": "Air Products", "CL": "Colgate-Palmolive", "MAR": "Marriott",
-        "FDX": "FedEx", "ADP": "ADP", "NSC": "Norfolk Southern", "ROP": "Roper Tech",
-        "PGR": "Progressive", "BKNG": "Booking Holdings", "UBER": "Uber",
-        "ABNB": "Airbnb", "DASH": "DoorDash", "SNOW": "Snowflake", "ZS": "Zscaler",
-        "CRWD": "CrowdStrike", "PANW": "Palo Alto Networks", "OKTA": "Okta",
-        "WDAY": "Workday", "TEAM": "Atlassian", "SHOP": "Shopify", "ROKU": "Roku",
-        "TTD": "Trade Desk", "MRNA": "Moderna", "PFE": "Pfizer", "BIIB": "Biogen",
-        "GILD": "Gilead Sciences", "REGN": "Regeneron", "VRTX": "Vertex",
-        "ILMN": "Illumina", "IDXX": "Idexx", "ALGN": "Align Tech", "DXCM": "Dexcom",
-        "BSX": "Boston Scientific",
-        # North America - Canada
-        "RY.TO": "Royal Bank of Canada", "TD.TO": "Toronto-Dominion Bank",
-        "SHOP.TO": "Shopify Inc.", "ENB.TO": "Enbridge Inc.", "CNQ.TO": "Canadian Natural Resources",
-        "BNS.TO": "Bank of Nova Scotia", "BMO.TO": "Bank of Montreal", "CM.TO": "Canadian Imperial Bank",
-        "SU.TO": "Suncor Energy", "CSU.TO": "Constellation Software",
-        # South America - Brazil (B3)
-        "PETR4.SA": "Petrobras", "VALE3.SA": "Vale S.A.", "ITUB4.SA": "Itaú Unibanco",
-        "BBDC4.SA": "Bradesco", "ABEV3.SA": "Ambev", "BBAS3.SA": "Banco do Brasil",
-        "ELET3.SA": "Eletrobras", "SUZB3.SA": "Suzano", "RENT3.SA": "Localiza",
-        "WEGE3.SA": "Weg S.A.", "RAIL3.SA": "Rumo Logística", "BRFS3.SA": "BRF S.A.",
-        "GGBR4.SA": "Gerdau", "CSAN3.SA": "Cosan", "EGIE3.SA": "Engie Brasil",
-        "SBSP3.SA": "Sabesp", "VIVT3.SA": "Vivo", "HYPE3.SA": "Hypermarcas",
-        "LREN3.SA": "Lojas Renner", "MGLU3.SA": "Magazine Luiza", "PCAR3.SA": "Pão de Açúcar",
-        "NTCO3.SA": "Natura", "USIM5.SA": "Usiminas", "CMIG4.SA": "Cemig",
-        # South America - Argentina
-        "YPF": "YPF S.A.", "GGAL": "Grupo Galicia", "BMA": "Banco Macro",
-        "PAM": "Pampa Energía", "TGS": "Transportadora de Gas del Sur",
-        # South America - Chile
-        "BSANTANDER.SN": "Banco Santander Chile", "ENELAM.SN": "Enel Americas",
-        "SQM.B": "SQM", "CMPC.SN": "CMPC", "CHILE.SN": "Banco de Chile",
-        # South America - Colombia
-        "EC": "Ecopetrol", "BVC": "Bancolombia", "CEMARGOS.CN": "Cementos Argos",
-        # Europe - Portugal (PSI)
+def build_ticker_universe():
+    """Returns DataFrame with Ticker, Name, Region, AssetClass."""
+    universe = []
+    
+    # ----- US stocks: download from GitHub (reliable) -----
+    us_urls = [
+        "https://raw.githubusercontent.com/rreichel3/US-Stock-Symbols/main/all/all_tickers.txt",
+        "https://raw.githubusercontent.com/jacobhobbi/StockTickerList/main/tickers.txt",
+        "https://raw.githubusercontent.com/philipperemy/symbols/main/data/all_symbols.txt"
+    ]
+    us_symbols = []
+    for url in us_urls:
+        try:
+            resp = requests.get(url, timeout=10)
+            if resp.status_code == 200:
+                lines = resp.text.splitlines()
+                for line in lines:
+                    sym = line.strip().upper()
+                    if sym and not sym.startswith('#'):
+                        us_symbols.append(sym)
+                break
+        except:
+            continue
+    us_symbols = list(set(us_symbols))
+    if len(us_symbols) < 1000:
+        us_symbols = [
+            "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "META", "NVDA", "BRK-B", "JPM", "V",
+            "JNJ", "WMT", "PG", "UNH", "HD", "DIS", "MA", "BAC", "NFLX", "KO", "PEP", "INTC",
+            "CSCO", "ADBE", "CRM", "COST", "CVX", "XOM", "WFC", "QCOM", "TXN", "AMGN", "HON",
+            "LMT", "UPS", "IBM", "SBUX", "NKE", "BA", "GE", "CAT", "GS", "MS", "BLK", "AXP",
+            "VZ", "T", "RTX", "LOW", "PYPL", "INTU", "MDT", "ISRG", "NOW", "SYK", "TGT", "CI",
+            "ZTS", "DUK", "MO", "USB", "PNC", "COF", "EMR", "MMM", "APD", "CL", "MAR", "FDX",
+            "ADP", "NSC", "ROP", "PGR", "BKNG", "UBER", "ABNB", "DASH", "SNOW", "ZS", "CRWD",
+            "PANW", "OKTA", "WDAY", "TEAM", "SHOP", "ROKU", "TTD", "MRNA", "PFE", "BIIB", "GILD",
+            "REGN", "VRTX", "ILMN", "IDXX", "ALGN", "DXCM", "BSX"
+        ]
+    for sym in us_symbols:
+        universe.append({
+            "Ticker": sym,
+            "Name": sym,
+            "Region": "North America",
+            "AssetClass": "Stock"
+        })
+    
+    # ----- International stocks (by suffix) -----
+    intl_tickers = {
         "EDP.LS": "EDP - Energias de Portugal", "GALP.LS": "Galp Energia",
         "BCP.LS": "Banco Comercial Português", "JMT.LS": "Jerónimo Martins",
         "REN.LS": "REN - Redes Energéticas Nacionais", "SON.LS": "Sonae",
         "NOS.LS": "NOS", "SEM.LS": "Semapa", "COR.LS": "Corticeira Amorim",
         "ALTR.LS": "Altri", "MCP.LS": "Motociclo", "IBS.LS": "Ibersol",
         "GVOLT.LS": "Greenvolt", "CTT.LS": "CTT Correios de Portugal",
-        # Europe - United Kingdom
         "AZN.L": "AstraZeneca", "SHEL.L": "Shell", "ULVR.L": "Unilever",
-        "HSBA.L": "HSBC", "RYAAY": "Ryanair", "GSK.L": "GSK", "BP.L": "BP",
-        "DGE.L": "Diageo", "REL.L": "RELX", "LSEG.L": "London Stock Exchange",
-        # Europe - Germany
+        "HSBA.L": "HSBC", "BP.L": "BP", "GSK.L": "GSK", "DGE.L": "Diageo",
+        "REL.L": "RELX", "LSEG.L": "London Stock Exchange", "LLOY.L": "Lloyds Banking",
+        "BARC.L": "Barclays", "STAN.L": "Standard Chartered", "PRU.L": "Prudential",
+        "AV.L": "Aviva", "LGEN.L": "Legal & General", "RIO.L": "Rio Tinto",
+        "AAL.L": "Anglo American", "GLEN.L": "Glencore", "SSE.L": "SSE",
+        "NG.L": "National Grid", "UU.L": "United Utilities",
         "SAP.DE": "SAP SE", "DTE.DE": "Deutsche Telekom", "VOW3.DE": "Volkswagen",
         "BAS.DE": "BASF", "BAYN.DE": "Bayer", "ADS.DE": "Adidas", "DBK.DE": "Deutsche Bank",
         "MBG.DE": "Mercedes-Benz", "BMW.DE": "BMW", "ALV.DE": "Allianz",
-        # Europe - France
+        "MUV2.DE": "Munich Re", "HEN3.DE": "Henkel", "FRE.DE": "Fresenius",
+        "RWE.DE": "RWE", "EOAN.DE": "E.ON", "LIN.DE": "Linde", "IFX.DE": "Infineon",
+        "ZAL.DE": "Zalando", "HEI.DE": "HeidelbergCement", "BEI.DE": "Beiersdorf",
         "BNP.PA": "BNP Paribas", "AIR.PA": "Airbus", "SAN.PA": "Sanofi",
         "OR.PA": "L'Oréal", "MC.PA": "LVMH", "SU.PA": "Schneider Electric",
         "TTE.PA": "TotalEnergies", "CS.PA": "AXA", "RNO.PA": "Renault",
-        # Europe - Switzerland
-        "NESN.SW": "Nestlé", "NOVO-B.CO": "Novo Nordisk", "ROG.SW": "Roche",
-        "NOVN.SW": "Novartis", "UBSG.SW": "UBS", "ZURN.SW": "Zurich Insurance",
-        # Europe - Netherlands
+        "CAP.PA": "Capgemini", "SAF.PA": "Safran", "MT.PA": "ArcelorMittal",
+        "ENGI.PA": "Engie", "VIE.PA": "Veolia", "KER.PA": "Kering",
+        "RMS.PA": "Hermès", "AC.PA": "Accor", "VIV.PA": "Vivendi",
+        "NESN.SW": "Nestlé", "ROG.SW": "Roche", "NOVN.SW": "Novartis",
+        "UBSG.SW": "UBS", "ZURN.SW": "Zurich Insurance", "ABBN.SW": "ABB",
+        "LONN.SW": "Lonza", "GEBN.SW": "Geberit", "SIKA.SW": "Sika",
+        "SREN.SW": "Swiss Re", "CFR.SW": "Richemont", "SCMN.SW": "Swisscom",
         "ASML.AS": "ASML Holding", "INGA.AS": "ING Groep", "PHIA.AS": "Philips",
-        "RDSA.AS": "Shell (NL)", "UNA.AS": "Unilever NL",
-        # Europe - Italy
+        "RDSA.AS": "Shell (NL)", "UNA.AS": "Unilever NL", "AD.AS": "Ahold Delhaize",
+        "HEIN.AS": "Heineken", "WKL.AS": "Wolters Kluwer", "RAND.AS": "Randstad",
+        "DSM.AS": "DSM", "AKZA.AS": "AkzoNobel",
         "ENEL.MI": "Enel", "STLA.MI": "Stellantis", "ISP.MI": "Intesa Sanpaolo",
         "G.MI": "Generali", "LDO.MI": "Leonardo", "UCG.MI": "UniCredit",
-        # Europe - Spain
+        "ENI.MI": "Eni", "TIT.MI": "Telecom Italia", "PRY.MI": "Prysmian",
+        "MONC.MI": "Moncler", "FERR.MI": "Ferrari", "PIR.MI": "Pirelli",
         "SAN.MC": "Banco Santander", "TEF.MC": "Telefónica", "IBE.MC": "Iberdrola",
         "REP.MC": "Repsol", "BBVA.MC": "BBVA", "ITX.MC": "Inditex",
-        # Europe - Denmark
+        "FER.MC": "Ferrovial", "ACS.MC": "ACS", "AENA.MC": "Aena",
+        "GRF.MC": "Grifols",
         "NOVO-B.CO": "Novo Nordisk", "MAERSK-B.CO": "Maersk", "DSV.CO": "DSV",
-        # Europe - Sweden
+        "VWS.CO": "Vestas Wind", "DANSKE.CO": "Danske Bank", "CARL-B.CO": "Carlsberg",
         "ERIC-B.ST": "Ericsson", "VOLV-B.ST": "Volvo", "SEB-A.ST": "SEB",
-        # Asia - Japan
+        "SWED-A.ST": "Swedbank", "SHB-A.ST": "Handelsbanken", "ABB.ST": "ABB",
+        "EQNR.OL": "Equinor", "DNB.OL": "DNB Bank", "NOKIA.HE": "Nokia",
+        "KNEBV.HE": "Kone", "SAMPO.HE": "Sampo",
         "7203.T": "Toyota Motor", "9984.T": "SoftBank Group", "6758.T": "Sony Group",
         "9432.T": "Nippon Telegraph & Telephone", "8306.T": "Mitsubishi UFJ Financial",
         "8058.T": "Mitsubishi Corporation", "4502.T": "Takeda Pharmaceutical",
         "6861.T": "Keyence", "7974.T": "Nintendo", "8316.T": "Sumitomo Mitsui",
-        # Asia - South Korea
+        "6098.T": "Recruit Holdings", "9983.T": "Fast Retailing", "4063.T": "Shin-Etsu Chemical",
+        "8766.T": "Tokio Marine", "9433.T": "KDDI", "2914.T": "Japan Tobacco",
+        "4568.T": "Daiichi Sankyo", "4901.T": "Fujifilm", "4911.T": "Shiseido",
         "005930.KS": "Samsung Electronics", "000660.KS": "SK Hynix",
         "035420.KS": "NAVER Corporation", "051910.KS": "LG Chem",
         "005380.KS": "Hyundai Motor", "068270.KS": "Celltrion",
-        # Asia - China (Hong Kong listed)
+        "006400.KS": "Samsung SDI", "017670.KS": "SK Telecom",
+        "032830.KS": "Samsung Life", "055550.KS": "Shinhan Financial",
+        "105560.KS": "KB Financial", "139480.KS": "Kakao",
         "0700.HK": "Tencent Holdings", "9988.HK": "Alibaba Group",
         "1299.HK": "AIA Group", "0939.HK": "China Construction Bank",
         "3988.HK": "Bank of China", "2318.HK": "Ping An Insurance",
-        # Asia - India
+        "1398.HK": "ICBC", "2628.HK": "China Life", "941.HK": "China Mobile",
+        "1810.HK": "Xiaomi", "9618.HK": "JD.com", "3690.HK": "Meituan",
+        "BABA": "Alibaba (US)", "BIDU": "Baidu", "JD": "JD.com", "PDD": "Pinduoduo",
+        "TSM": "Taiwan Semiconductor",
         "HDFCBANK.NS": "HDFC Bank", "RELIANCE.NS": "Reliance Industries",
         "TCS.NS": "Tata Consultancy Services", "INFY.NS": "Infosys",
         "ITC.NS": "ITC Limited", "BHARTIARTL.NS": "Bharti Airtel",
         "ICICIBANK.NS": "ICICI Bank", "SBIN.NS": "State Bank of India",
-        # Asia - Taiwan
-        "TSM": "Taiwan Semiconductor", "2330.TW": "TSMC (local)", "2454.TW": "MediaTek",
-        # Asia - Australia
-        "CBA.AX": "Commonwealth Bank", "BHP.AX": "BHP Group", "CSL.AX": "CSL Limited",
-        "WBC.AX": "Westpac", "NAB.AX": "National Australia Bank",
-        # ETFs
+        "KOTAKBANK.NS": "Kotak Bank", "AXISBANK.NS": "Axis Bank",
+        "HCLTECH.NS": "HCL Tech", "WIPRO.NS": "Wipro", "TECHM.NS": "Tech Mahindra",
+        "LT.NS": "Larsen & Toubro", "MARUTI.NS": "Maruti Suzuki", "M&M.NS": "Mahindra",
+        "ASIANPAINT.NS": "Asian Paints", "HINDUNILVR.NS": "Hindustan Unilever",
+        "PETR4.SA": ("Petrobras", "Brazil"), "VALE3.SA": ("Vale S.A.", "Brazil"),
+        "ITUB4.SA": ("Itaú Unibanco", "Brazil"), "BBDC4.SA": ("Bradesco", "Brazil"),
+        "ABEV3.SA": ("Ambev", "Brazil"), "BBAS3.SA": ("Banco do Brasil", "Brazil"),
+        "ELET3.SA": ("Eletrobras", "Brazil"), "SUZB3.SA": ("Suzano", "Brazil"),
+        "WEGE3.SA": ("Weg S.A.", "Brazil"), "YPF": ("YPF S.A.", "Argentina"),
+        "GGAL": ("Grupo Galicia", "Argentina"), "BMA": ("Banco Macro", "Argentina"),
+        "SQM.B": ("SQM", "Chile"), "BSANTANDER.SN": ("Banco Santander Chile", "Chile"),
+        "EC": ("Ecopetrol", "Colombia"), "BVC": ("Bancolombia", "Colombia"),
+        "NPS.JO": ("Naspers", "South Africa"), "FSR.JO": ("FirstRand", "South Africa"),
+        "SBK.JO": ("Standard Bank", "South Africa"), "ABG.JO": ("Absa", "South Africa"),
+        "COMI.CA": ("Commercial International Bank", "Egypt"),
+        "TEVA": ("Teva Pharma", "Israel"), "CHKP": ("Check Point", "Israel"),
+        "WIX": ("Wix.com", "Israel"), "NICE": ("NICE Systems", "Israel")
+    }
+    for t, v in intl_tickers.items():
+        if isinstance(v, tuple):
+            name, country = v
+        else:
+            name = v
+            if t.endswith(".LS"): country = "Portugal"
+            elif t.endswith(".L"): country = "United Kingdom"
+            elif t.endswith(".DE"): country = "Germany"
+            elif t.endswith(".PA"): country = "France"
+            elif t.endswith(".SW"): country = "Switzerland"
+            elif t.endswith(".AS"): country = "Netherlands"
+            elif t.endswith(".MI"): country = "Italy"
+            elif t.endswith(".MC"): country = "Spain"
+            elif t.endswith(".CO"): country = "Denmark"
+            elif t.endswith(".ST"): country = "Sweden"
+            elif t.endswith(".OL"): country = "Norway"
+            elif t.endswith(".HE"): country = "Finland"
+            elif t.endswith(".T"): country = "Japan"
+            elif t.endswith(".KS"): country = "South Korea"
+            elif t.endswith(".HK"): country = "Hong Kong"
+            elif t.endswith(".NS"): country = "India"
+            elif t.endswith(".SA"): country = "Brazil"
+            elif t in ["YPF","GGAL","BMA"]: country = "Argentina"
+            elif t in ["SQM.B","BSANTANDER.SN"]: country = "Chile"
+            elif t in ["EC","BVC"]: country = "Colombia"
+            elif t in ["NPS.JO","FSR.JO","SBK.JO","ABG.JO"]: country = "South Africa"
+            elif t == "COMI.CA": country = "Egypt"
+            else: country = "Unknown"
+        if country in ["United Kingdom","Germany","France","Switzerland","Netherlands","Italy","Spain","Denmark","Sweden","Norway","Finland","Portugal"]:
+            region = "Europe"
+        elif country in ["Japan","South Korea","Hong Kong","India","China","Taiwan"]:
+            region = "Asia"
+        elif country in ["Brazil","Argentina","Chile","Colombia"]:
+            region = "South America"
+        elif country in ["South Africa","Egypt"]:
+            region = "Africa"
+        elif country in ["Israel"]:
+            region = "Middle East"
+        else:
+            region = "Other"
+        universe.append({"Ticker": t, "Name": name, "Region": region, "AssetClass": "Stock"})
+    
+    # ----- ETFs -----
+    etf_list = {
         "SPY": "SPDR S&P 500 ETF", "QQQ": "Invesco QQQ Trust", "IVV": "iShares Core S&P 500",
-        "VOO": "Vanguard S&P 500", "VTI": "Vanguard Total Stock Market",
-        "BND": "Vanguard Total Bond Market", "GLD": "SPDR Gold Trust",
-        "SLV": "iShares Silver Trust", "TLT": "iShares 20+ Year Treasury Bond",
-        "EEM": "iShares MSCI Emerging Markets", "EFA": "iShares MSCI EAFE",
-        "VGK": "Vanguard FTSE Europe", "EWJ": "iShares MSCI Japan",
-        "FXI": "iShares China Large-Cap", "FLI": "iShares MSCI Portugal",
-        # Cryptocurrencies
+        "VOO": "Vanguard S&P 500", "VTI": "Vanguard Total Stock Market", "BND": "Vanguard Total Bond Market",
+        "GLD": "SPDR Gold Trust", "SLV": "iShares Silver Trust", "TLT": "iShares 20+ Year Treasury Bond",
+        "EEM": "iShares MSCI Emerging Markets", "EFA": "iShares MSCI EAFE", "VGK": "Vanguard FTSE Europe",
+        "EWJ": "iShares MSCI Japan", "FXI": "iShares China Large-Cap", "ARKK": "ARK Innovation ETF",
+        "IBB": "iShares Nasdaq Biotechnology", "XLV": "Health Care Select Sector", "XLF": "Financial Select Sector",
+        "XLE": "Energy Select Sector", "XLK": "Technology Select Sector", "XLI": "Industrials Select Sector",
+        "XLY": "Consumer Discretionary", "XLP": "Consumer Staples", "XLU": "Utilities",
+        "SMH": "VanEck Semiconductor", "TAN": "Invesco Solar", "ICLN": "iShares Global Clean Energy",
+        "LIT": "Global X Lithium", "BOTZ": "Global X Robotics", "FINX": "Global X FinTech", "CLOU": "Global X Cloud Computing"
+    }
+    for t, name in etf_list.items():
+        universe.append({"Ticker": t, "Name": name, "Region": "Global", "AssetClass": "ETF"})
+    
+    # ----- Commodities (futures and ETFs) -----
+    commodities_futures = {
+        "GC=F": "Gold Futures", "SI=F": "Silver Futures", "CL=F": "Crude Oil Futures",
+        "NG=F": "Natural Gas Futures", "HG=F": "Copper Futures", "ZS=F": "Soybean Futures",
+        "ZW=F": "Wheat Futures", "ZC=F": "Corn Futures", "KC=F": "Coffee Futures",
+        "CT=F": "Cotton Futures", "SB=F": "Sugar Futures", "CC=F": "Cocoa Futures",
+        "PA=F": "Palladium Futures", "PL=F": "Platinum Futures", "RB=F": "Gasoline Futures",
+        "HO=F": "Heating Oil Futures", "BZ=F": "Brent Crude Futures"
+    }
+    for t, name in commodities_futures.items():
+        universe.append({"Ticker": t, "Name": name, "Region": "Global", "AssetClass": "Commodity"})
+    
+    commodity_etfs = {
+        "DBC": "Invesco DB Commodity Index", "GSG": "iShares S&P GSCI Commodity",
+        "USO": "United States Oil", "UNG": "United States Natural Gas",
+        "WEAT": "Teucrium Wheat", "CORN": "Teucrium Corn", "SOYB": "Teucrium Soybean",
+        "CANE": "Teucrium Sugar", "JO": "iPath Coffee", "BAL": "iPath Cotton"
+    }
+    for t, name in commodity_etfs.items():
+        if t not in etf_list:
+            universe.append({"Ticker": t, "Name": name, "Region": "Global", "AssetClass": "Commodity"})
+    
+    # ----- Cryptocurrencies -----
+    crypto_list = {
         "BTC-USD": "Bitcoin", "ETH-USD": "Ethereum", "BNB-USD": "Binance Coin",
         "SOL-USD": "Solana", "XRP-USD": "Ripple", "ADA-USD": "Cardano",
         "DOGE-USD": "Dogecoin", "AVAX-USD": "Avalanche", "SHIB-USD": "Shiba Inu",
         "DOT-USD": "Polkadot", "LINK-USD": "Chainlink", "MATIC-USD": "Polygon",
-        "LTC-USD": "Litecoin", "UNI-USD": "Uniswap", "ATOM-USD": "Cosmos",
+        "LTC-USD": "Litecoin", "UNI-USD": "Uniswap", "ATOM-USD": "Cosmos"
     }
-    # Assign region and country based on suffix and known mappings
-    df = pd.DataFrame(list(tickers.items()), columns=["Ticker", "Name"])
+    for t, name in crypto_list.items():
+        universe.append({"Ticker": t, "Name": name, "Region": "Global", "AssetClass": "Crypto"})
     
-    def get_region_and_country(ticker):
-        # North America
-        if ticker.endswith(".TO") or ticker in ["RY.TO","TD.TO","SHOP.TO","ENB.TO","CNQ.TO","BNS.TO","BMO.TO","CM.TO","SU.TO","CSU.TO"]:
-            return "North America", "Canada"
-        if ticker in ["AAPL","MSFT","GOOGL","AMZN","TSLA","META","NVDA","BRK-B","JPM","V","JNJ",
-                      "WMT","PG","UNH","HD","DIS","MA","BAC","NFLX","KO","PEP","INTC","CSCO",
-                      "ADBE","CRM","COST","CVX","XOM","WFC","QCOM","TXN","AMGN","HON","LMT",
-                      "UPS","IBM","SBUX","NKE","BA","GE","CAT","GS","MS","BLK","AXP","VZ","T",
-                      "RTX","LOW","PYPL","INTU","MDT","ISRG","NOW","SYK","TGT","CI","ZTS","DUK",
-                      "MO","USB","PNC","COF","EMR","MMM","APD","CL","MAR","FDX","ADP","NSC","ROP",
-                      "PGR","BKNG","UBER","ABNB","DASH","SNOW","ZS","CRWD","PANW","OKTA","WDAY",
-                      "TEAM","SHOP","ROKU","TTD","MRNA","PFE","BIIB","GILD","REGN","VRTX","ILMN",
-                      "IDXX","ALGN","DXCM","BSX"]:
-            return "North America", "USA"
-        # South America - Brazil
-        if ticker.endswith(".SA") or ticker in ["PETR4.SA","VALE3.SA","ITUB4.SA","BBDC4.SA","ABEV3.SA",
-                                                "BBAS3.SA","ELET3.SA","SUZB3.SA","RENT3.SA","WEGE3.SA",
-                                                "RAIL3.SA","BRFS3.SA","GGBR4.SA","CSAN3.SA","EGIE3.SA",
-                                                "SBSP3.SA","VIVT3.SA","HYPE3.SA","LREN3.SA","MGLU3.SA",
-                                                "PCAR3.SA","NTCO3.SA","USIM5.SA","CMIG4.SA"]:
-            return "South America", "Brazil"
-        # South America - Argentina
-        if ticker in ["YPF","GGAL","BMA","PAM","TGS"]:
-            return "South America", "Argentina"
-        # South America - Chile
-        if ticker.endswith(".SN") or ticker in ["SQM.B","CMPC.SN","CHILE.SN"]:
-            return "South America", "Chile"
-        # South America - Colombia
-        if ticker in ["EC","BVC","CEMARGOS.CN"]:
-            return "South America", "Colombia"
-        # Europe - Portugal
-        if ticker.endswith(".LS"):
-            return "Europe", "Portugal"
-        # Europe - UK
-        if ticker.endswith(".L") or ticker in ["AZN.L","SHEL.L","ULVR.L","HSBA.L","RYAAY","GSK.L","BP.L","DGE.L","REL.L","LSEG.L"]:
-            return "Europe", "United Kingdom"
-        # Europe - Germany
-        if ticker.endswith(".DE") or ticker in ["SAP.DE","DTE.DE","VOW3.DE","BAS.DE","BAYN.DE","ADS.DE","DBK.DE","MBG.DE","BMW.DE","ALV.DE"]:
-            return "Europe", "Germany"
-        # Europe - France
-        if ticker.endswith(".PA") or ticker in ["BNP.PA","AIR.PA","SAN.PA","OR.PA","MC.PA","SU.PA","TTE.PA","CS.PA","RNO.PA"]:
-            return "Europe", "France"
-        # Europe - Switzerland
-        if ticker.endswith(".SW") or ticker in ["NESN.SW","ROG.SW","NOVN.SW","UBSG.SW","ZURN.SW"]:
-            return "Europe", "Switzerland"
-        # Europe - Netherlands
-        if ticker.endswith(".AS") or ticker in ["ASML.AS","INGA.AS","PHIA.AS","RDSA.AS","UNA.AS"]:
-            return "Europe", "Netherlands"
-        # Europe - Italy
-        if ticker.endswith(".MI") or ticker in ["ENEL.MI","STLA.MI","ISP.MI","G.MI","LDO.MI","UCG.MI"]:
-            return "Europe", "Italy"
-        # Europe - Spain
-        if ticker.endswith(".MC") or ticker in ["SAN.MC","TEF.MC","IBE.MC","REP.MC","BBVA.MC","ITX.MC"]:
-            return "Europe", "Spain"
-        # Europe - Denmark
-        if ticker.endswith(".CO") or ticker in ["NOVO-B.CO","MAERSK-B.CO","DSV.CO"]:
-            return "Europe", "Denmark"
-        # Europe - Sweden
-        if ticker.endswith(".ST"):
-            return "Europe", "Sweden"
-        # Asia - Japan
-        if ticker.endswith(".T"):
-            return "Asia", "Japan"
-        # Asia - South Korea
-        if ticker.endswith(".KS"):
-            return "Asia", "South Korea"
-        # Asia - Hong Kong
-        if ticker.endswith(".HK"):
-            return "Asia", "Hong Kong"
-        # Asia - India
-        if ticker.endswith(".NS") or ticker in ["HDFCBANK.NS","RELIANCE.NS","TCS.NS","INFY.NS","ITC.NS","BHARTIARTL.NS","ICICIBANK.NS","SBIN.NS"]:
-            return "Asia", "India"
-        # Asia - Taiwan
-        if ticker in ["TSM","2330.TW","2454.TW"]:
-            return "Asia", "Taiwan"
-        # Asia - Australia
-        if ticker.endswith(".AX"):
-            return "Asia", "Australia"
-        # Asia - China (US listed)
-        if ticker in ["BABA","BIDU","JD"]:
-            return "Asia", "China"
-        # ETFs
-        if ticker in ["SPY","QQQ","IVV","VOO","VTI","BND","GLD","SLV","TLT","EEM","EFA","VGK","EWJ","FXI","FLI"]:
-            return "ETFs", "ETFs"
-        # Cryptocurrencies
-        if "-USD" in ticker:
-            return "Crypto", "Crypto"
-        # Fallback
-        return "Other", "Unknown"
-    
-    df[["Region", "Country"]] = df["Ticker"].apply(lambda x: pd.Series(get_region_and_country(x)))
-    # Filter out "Other" for clarity
-    df = df[df["Region"] != "Other"]
+    df = pd.DataFrame(universe).drop_duplicates(subset="Ticker")
     return df
 
-@st.cache_data(ttl=3600)
-def get_financials(ticker):
+# ============================================
+# 2. FIVE-SOURCE FUNDAMENTAL DATA FETCHER
+# ============================================
+def fetch_financial_data(ticker, timeout=6):
+    """Try 5 sources in order: xfinlink, Alpha Vantage, FMP, Tiingo, yfinance."""
+    # 1. xfinlink
+    if XFL_AVAILABLE:
+        try:
+            df = xfl.metrics(ticker, fields=["roe", "price_to_book", "debt_to_equity", "revenue_growth"])
+            if df is not None and len(df) > 0:
+                latest = df.iloc[-1]
+                roe = latest.get("roe")
+                pb = latest.get("price_to_book")
+                debt_eq = latest.get("debt_to_equity")
+                rev_growth = latest.get("revenue_growth")
+                if any(v is not None for v in [roe, pb, debt_eq, rev_growth]):
+                    return {"roe": roe, "pb": pb, "debt_to_equity": debt_eq, "revenue_growth": rev_growth}
+        except:
+            pass
+    
+    # 2. Alpha Vantage
+    if ALPHA_VANTAGE_AVAILABLE and ALPHA_VANTAGE_KEY:
+        try:
+            fd = FundamentalData(key=ALPHA_VANTAGE_KEY, output_format='pandas')
+            overview, _ = fd.get_company_overview(symbol=ticker)
+            roe = overview.get('ReturnOnEquityTTM')
+            pb = overview.get('PriceToBookRatio')
+            debt_eq = overview.get('DebtToEquityRatio')
+            rev_growth = overview.get('RevenueGrowth3YrPct')
+            if any(v is not None for v in [roe, pb, debt_eq, rev_growth]):
+                return {"roe": roe, "pb": pb, "debt_to_equity": debt_eq, "revenue_growth": rev_growth}
+        except:
+            pass
+    
+    # 3. Financial Modeling Prep
+    if FMP_AVAILABLE and FMP_API_KEY:
+        try:
+            fmp = FinancialModelingPrep(api_key=FMP_API_KEY)
+            rating = fmp.rating(ticker)
+            roe = rating.get('roe')
+            pb = rating.get('priceToBookRatio')
+            debt_eq = rating.get('debtToEquity')
+            rev_growth = rating.get('revenueGrowth')
+            if any(v is not None for v in [roe, pb, debt_eq, rev_growth]):
+                return {"roe": roe, "pb": pb, "debt_to_equity": debt_eq, "revenue_growth": rev_growth}
+        except:
+            pass
+    
+    # 4. Tiingo
+    if TIINGO_AVAILABLE and TIINGO_API_KEY:
+        try:
+            client = TiingoClient({'api_key': TIINGO_API_KEY})
+            data = client.get_ticker_fundamentals(ticker)
+            fundamentals = data.get('fundamentals', {})
+            roe = fundamentals.get('roe')
+            pb = fundamentals.get('pb')
+            debt_eq = fundamentals.get('debtToEquity')
+            rev_growth = fundamentals.get('revenueGrowth')
+            if any(v is not None for v in [roe, pb, debt_eq, rev_growth]):
+                return {"roe": roe, "pb": pb, "debt_to_equity": debt_eq, "revenue_growth": rev_growth}
+        except:
+            pass
+    
+    # 5. yfinance (final fallback)
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
-        return {
-            "roe": info.get("returnOnEquity", None) or info.get("roe", None),
-            "pb": info.get("priceToBook", None),
-            "debt_to_equity": info.get("debtToEquity", None) or info.get("totalDebtToEquity", None),
-            "revenue_growth": info.get("revenueGrowth", None),
-        }
-    except Exception:
-        return None
+        roe = info.get("returnOnEquity") or info.get("roe")
+        pb = info.get("priceToBook")
+        debt_eq = info.get("debtToEquity") or info.get("totalDebtToEquity")
+        rev_growth = info.get("revenueGrowth")
+        if any(v is not None for v in [roe, pb, debt_eq, rev_growth]):
+            return {"roe": roe, "pb": pb, "debt_to_equity": debt_eq, "revenue_growth": rev_growth}
+    except:
+        pass
+    return None
 
-def buffett_score(ticker):
-    data = get_financials(ticker)
+def buffett_score_from_data(data):
     if not data:
         return {"total": 0, "profitability": 0, "valuation": 0, "debt": 0, "consistency": 0}
     total = 0
+    # Profitability (ROE) – max 40
     roe = data.get("roe")
     if roe is not None:
         if roe > 0.15:
@@ -275,6 +373,7 @@ def buffett_score(ticker):
             profitability = 0
     else:
         profitability = 0
+    # Valuation (P/B) – max 30
     pb = data.get("pb")
     if pb is not None:
         if pb < 1.5:
@@ -287,6 +386,7 @@ def buffett_score(ticker):
             valuation = 0
     else:
         valuation = 0
+    # Debt (D/E) – max 20
     debt_eq = data.get("debt_to_equity")
     if debt_eq is not None:
         if debt_eq < 50:
@@ -299,6 +399,7 @@ def buffett_score(ticker):
             debt = 0
     else:
         debt = 0
+    # Consistency (Revenue Growth) – max 10
     rev_growth = data.get("revenue_growth")
     if rev_growth is not None:
         if rev_growth > 0.10:
@@ -319,27 +420,119 @@ def buffett_score(ticker):
         "consistency": consistency,
     }
 
-@st.cache_data(ttl=3600)
-def get_stock_data(symbol, period="2d", interval="1d"):
-    ticker = yf.Ticker(symbol)
-    hist = ticker.history(period=period, interval=interval)
-    return hist
+# ============================================
+# 3. PERSISTENT CACHE
+# ============================================
+CACHE_FILE = "buffett_scores_cache.json"
+def load_cached_scores():
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+def save_cached_scores(scores_dict):
+    with open(CACHE_FILE, "w") as f:
+        json.dump(scores_dict, f)
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def get_current_price(symbol):
-    try:
-        ticker = yf.Ticker(symbol)
-        return ticker.history(period="1d")["Close"].iloc[-1]
-    except Exception:
-        return 0.0
+# ============================================
+# 4. BATCHED ANALYSIS WITH PROGRESS BAR
+# ============================================
+def analyze_all_assets(ticker_df, force_refresh=False):
+    cached = load_cached_scores() if not force_refresh else {}
+    results = []
+    tickers = ticker_df.head(15000)['Ticker'].tolist()
+    batch_size = 100
+    num_batches = (len(tickers) + batch_size - 1) // batch_size
+    
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    start_time = time.time()
+    
+    def process_ticker(ticker):
+        if not force_refresh and ticker in cached:
+            score_data = cached[ticker]
+            row = ticker_df[ticker_df['Ticker'] == ticker]
+            if not row.empty:
+                name = row.iloc[0]["Name"]
+                region = row.iloc[0]["Region"]
+                asset_class = row.iloc[0]["AssetClass"]
+            else:
+                name, region, asset_class = ticker, "Unknown", "Unknown"
+            return {
+                "Ticker": ticker,
+                "Company": name,
+                "Region": region,
+                "AssetClass": asset_class,
+                "Buffett Score (0-100)": score_data["total"],
+                "Profitability (ROE)": score_data["profitability"],
+                "Valuation (P/B)": score_data["valuation"],
+                "Debt (D/E)": score_data["debt"],
+                "Consistency": score_data["consistency"]
+            }
+        else:
+            data = fetch_financial_data(ticker, timeout=6)
+            score_data = buffett_score_from_data(data)
+            if score_data["total"] > 0:
+                cached[ticker] = score_data
+                row = ticker_df[ticker_df['Ticker'] == ticker]
+                if not row.empty:
+                    name = row.iloc[0]["Name"]
+                    region = row.iloc[0]["Region"]
+                    asset_class = row.iloc[0]["AssetClass"]
+                else:
+                    name, region, asset_class = ticker, "Unknown", "Unknown"
+                return {
+                    "Ticker": ticker,
+                    "Company": name,
+                    "Region": region,
+                    "AssetClass": asset_class,
+                    "Buffett Score (0-100)": score_data["total"],
+                    "Profitability (ROE)": score_data["profitability"],
+                    "Valuation (P/B)": score_data["valuation"],
+                    "Debt (D/E)": score_data["debt"],
+                    "Consistency": score_data["consistency"]
+                }
+        return None
+    
+    for batch_idx in range(num_batches):
+        batch_start = batch_idx * batch_size
+        batch_end = min(batch_start + batch_size, len(tickers))
+        batch_tickers = tickers[batch_start:batch_end]
+        elapsed = time.time() - start_time
+        percent = (batch_idx + 1) / num_batches
+        eta = elapsed / (batch_idx + 1) * (num_batches - batch_idx - 1) if batch_idx + 1 > 0 else 0
+        status_text.text(
+            f"Batch {batch_idx+1}/{num_batches} (assets {batch_start+1}-{batch_end}) | "
+            f"Elapsed: {elapsed:.1f}s | ETA: {eta:.1f}s | Score candidates found: {len(results)}"
+        )
+        with ThreadPoolExecutor(max_workers=20) as executor:
+            futures = {executor.submit(process_ticker, ticker): ticker for ticker in batch_tickers}
+            for future in as_completed(futures):
+                res = future.result()
+                if res:
+                    results.append(res)
+        progress_bar.progress(percent)
+        save_cached_scores(cached)
+    
+    status_text.text(f"Analysis complete in {time.time() - start_time:.1f}s. Found {len(results)} assets with positive scores.")
+    time.sleep(1.5)
+    status_text.empty()
+    progress_bar.empty()
+    return pd.DataFrame(results)
 
+# ============================================
+# 5. NEWS AND SENTIMENT (with last 10 news feed)
+# ============================================
 @st.cache_data(ttl=7200, show_spinner=False)
-def get_all_news(symbol, max_news=20):
+def get_all_news(symbol, max_news=50):
     try:
         from gnews import GNews
         google_news = GNews(period="1d", max_results=max_news)
         articles = google_news.get_news(symbol)
         if not articles:
+            google_news = GNews(period="1d", max_results=max_news)
             articles = google_news.get_news(f"{symbol} stock")
         news_list = []
         for art in articles[:max_news]:
@@ -410,289 +603,216 @@ def get_recommendation(daily_change, sentiment_score, news_count):
     else:
         return ("⏸️ HOLD", "#9e9e9e", f"Mixed signals (sentiment {sentiment_score:.0%}, change {daily_change:+.1f}%).")
 
-# ============================================
-# SESSION STATE AND GLOBAL TOP 50 (with region/country)
-# ============================================
-if "portfolio" not in st.session_state:
-    if os.path.exists("portfolio_user.json"):
-        with open("portfolio_user.json", "r") as f:
-            st.session_state.portfolio = json.load(f)
-    else:
-        st.session_state.portfolio = ["AAPL", "MSFT", "GOOGL", "NVDA", "EDP.LS", "7203.T", "PETR4.SA"]
+@st.cache_data(ttl=3600)
+def get_current_price(symbol):
+    try:
+        ticker = yf.Ticker(symbol)
+        return ticker.history(period="1d")["Close"].iloc[-1]
+    except Exception:
+        return 0.0
 
-ticker_df = get_global_tickers()
-
-if "global_top50_df" not in st.session_state:
-    with st.spinner("Analyzing global markets (may take ~40 seconds)..."):
-        tickers_to_score = ticker_df.head(600)['Ticker'].tolist()
-        results = []
-        for ticker in tickers_to_score:
-            score_data = buffett_score(ticker)
-            if score_data["total"] > 0:
-                name_row = ticker_df[ticker_df['Ticker'] == ticker]['Name']
-                name = name_row.values[0] if not name_row.empty else ticker
-                region = ticker_df[ticker_df['Ticker'] == ticker]['Region'].values[0]
-                country = ticker_df[ticker_df['Ticker'] == ticker]['Country'].values[0]
-                results.append({
-                    "Ticker": ticker,
-                    "Company": name,
-                    "Region": region,
-                    "Country": country,
-                    "Buffett Score (0-100)": score_data["total"],
-                    "Profitability (ROE)": score_data["profitability"],
-                    "Valuation (P/B)": score_data["valuation"],
-                    "Debt (D/E)": score_data["debt"],
-                    "Consistency": score_data["consistency"]
-                })
-        df_scores = pd.DataFrame(results)
-        if not df_scores.empty:
-            df_scores = df_scores.sort_values("Buffett Score (0-100)", ascending=False)
-            st.session_state.global_top50_df = df_scores.head(50)
-        else:
-            st.session_state.global_top50_df = pd.DataFrame()
+@st.cache_data(ttl=3600)
+def get_stock_data(symbol, period="2d", interval="1d"):
+    ticker = yf.Ticker(symbol)
+    hist = ticker.history(period=period, interval=interval)
+    return hist
 
 # ============================================
-# MODERN DARK CSS
+# 6. STREAMLIT UI with Beta Version in top right
 # ============================================
-st.markdown("""
-<style>
-    .stApp { background: #0b0f1c; }
-    .css-1d391kg { background: #0a0f1a; border-right: 1px solid #2a2e3d; }
-    .stMetric { background: #1a1f2e; border-radius: 20px; padding: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
-    h1, h2, h3 { color: #eef2ff; font-weight: 600; }
-    .rec-box {
-        background: linear-gradient(145deg, #1a1f2e, #131725);
-        border-radius: 32px;
-        padding: 1.8rem;
-        text-align: center;
-        margin: 1.2rem 0;
-        border: 1px solid #2d3348;
-        box-shadow: 0 8px 20px rgba(0,0,0,0.3);
-    }
-    .stButton>button { background: #2c3e66; border-radius: 40px; width: 100%; }
-    .dataframe { background-color: #1a1f2e; border-radius: 16px; }
-</style>
-""", unsafe_allow_html=True)
-
-# ============================================
-# SIDEBAR – SEARCH AND PORTFOLIO
-# ============================================
-with st.sidebar:
-    st.image("https://img.icons8.com/fluency/96/000000/warren-buffett--v2.png", width=80)
-    st.title("Buffett Hub")
-    st.markdown("---")
-    st.subheader("🔍 Add Asset")
-    search_term = st.text_input("Company name or ticker:")
-    if search_term:
-        filtered = ticker_df[ticker_df["Name"].str.contains(search_term, case=False) | 
-                             ticker_df["Ticker"].str.contains(search_term.upper(), case=False)]
-        filtered = filtered.head(20)
-        if not filtered.empty:
-            selected_ticker = st.selectbox("Select:", filtered["Ticker"].tolist(),
-                                           format_func=lambda x: f"{x} – {filtered[filtered['Ticker']==x]['Name'].values[0]}")
-            if st.button("➕ Add to Portfolio"):
-                if selected_ticker not in st.session_state.portfolio:
-                    st.session_state.portfolio.append(selected_ticker)
-                    with open("portfolio_user.json", "w") as f:
-                        json.dump(st.session_state.portfolio, f)
-                    st.success(f"Added {selected_ticker}")
-                    st.rerun()
-                else:
-                    st.warning("Already in portfolio")
-    st.markdown("---")
-    st.subheader("📋 My Portfolio")
-    with st.container(height=300):
-        for asset in st.session_state.portfolio.copy():
-            col1, col2 = st.columns([4, 1])
-            col1.write(f"🔹 {asset}")
-            if col2.button("✖", key=f"del_{asset}"):
-                st.session_state.portfolio.remove(asset)
-                with open("portfolio_user.json", "w") as f:
-                    json.dump(st.session_state.portfolio, f)
-                st.rerun()
-    st.markdown("---")
-    st.caption("Data: Yahoo Finance | News: Google RSS | AI: FinBERT")
-
-# ============================================
-# MAIN CONTENT – GLOBAL TOP 50 + BY REGION / COUNTRY
-# ============================================
-st.title("🌍 Global Investment Dashboard")
-st.caption(f"Last update: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC")
-
-top50 = st.session_state.global_top50_df
-if top50.empty:
-    st.warning("Could not compute global top scores. Please try again later.")
-else:
-    st.subheader("🏆 Top 50 Companies – Buffett Score (0-100)")
-    # Vertical bar chart for global top 50
+def main():
+    # Create two columns: one for title, one for version (right aligned)
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.title("🌍 Global Buffett Screener")
+    with col2:
+        st.markdown(
+            "<div style='text-align: right; margin-top: 1rem;'><span style='background-color: #2c3e66; padding: 4px 12px; border-radius: 20px; color: white; font-size: 0.8rem;'>Beta Version 1.4</span></div>",
+            unsafe_allow_html=True
+        )
+    st.caption("Analyzing 15,000+ global assets | Five data sources | Region & asset class filters | Latest 10 news feed")
+    
+    ticker_df = build_ticker_universe()
+    st.sidebar.success(f"Loaded {len(ticker_df)} tickers")
+    
+    # Sidebar filters
+    st.sidebar.subheader("🔍 Filters for Top 50")
+    region_filter = st.sidebar.multiselect(
+        "Region(s)",
+        options=sorted(ticker_df["Region"].unique()),
+        default=sorted(ticker_df["Region"].unique())
+    )
+    asset_filter = st.sidebar.multiselect(
+        "Asset Class(es)",
+        options=sorted(ticker_df["AssetClass"].unique()),
+        default=sorted(ticker_df["AssetClass"].unique())
+    )
+    
+    if st.sidebar.button("Run / Refresh Full Analysis (15k+ assets)"):
+        st.session_state["force_refresh"] = True
+        st.rerun()
+    
+    if "global_top50_df" not in st.session_state or st.session_state.get("force_refresh", False):
+        with st.spinner("Analyzing global assets (parallel batches, please wait)..."):
+            df_scores = analyze_all_assets(ticker_df, force_refresh=st.session_state.get("force_refresh", False))
+            if not df_scores.empty:
+                st.session_state.global_top50_df = df_scores
+                st.session_state.force_refresh = False
+            else:
+                st.session_state.global_top50_df = pd.DataFrame()
+                st.session_state.force_refresh = False
+    
+    top50 = st.session_state.get("global_top50_df", pd.DataFrame())
+    if top50.empty:
+        st.info("No scores computed yet. Click 'Run / Refresh Full Analysis (15k+ assets)' to start (may take several minutes).")
+        st.stop()
+    
+    filtered = top50[
+        (top50["Region"].isin(region_filter)) &
+        (top50["AssetClass"].isin(asset_filter))
+    ]
+    
+    st.subheader("🏆 Top 50 Buffett Scores (0-100)")
+    show_top = st.slider("Number of companies to display", 10, 100, 50)
+    display_df = filtered.head(show_top)
+    
+    # Bar chart
     fig = go.Figure(data=[
         go.Bar(
-            x=top50["Ticker"],
-            y=top50["Buffett Score (0-100)"],
-            marker=dict(color=top50["Buffett Score (0-100)"], colorscale="Viridis", showscale=True),
-            text=top50["Buffett Score (0-100)"],
+            x=display_df["Ticker"],
+            y=display_df["Buffett Score (0-100)"],
+            marker=dict(color=display_df["Buffett Score (0-100)"], colorscale="Viridis", showscale=True),
+            text=display_df["Buffett Score (0-100)"],
             textposition="outside",
             hovertemplate="Ticker: %{x}<br>Score: %{y}<br>Company: %{customdata}<extra></extra>",
-            customdata=top50["Company"]
+            customdata=display_df["Company"]
         )
     ])
     fig.update_layout(
-        title="Global Top 50 Ranking",
+        title="Top Ranking",
         xaxis_title="Ticker",
         yaxis_title="Buffett Score",
         template="plotly_dark",
-        height=800,
-        xaxis=dict(tickangle=90, tickfont=dict(size=8)),
-        plot_bgcolor="#131826",
-        paper_bgcolor="#0b0f1c",
-        font=dict(color="#eef2ff"),
-        margin=dict(b=150)
+        height=600,
+        xaxis=dict(tickangle=45),
+        margin=dict(b=100)
     )
     st.plotly_chart(fig, use_container_width=True)
     
-    # Filter options: by Region or by Country
-    st.subheader("📊 Filter by Region / Country")
-    filter_type = st.radio("View by:", ["Region", "Country"], horizontal=True)
+    st.dataframe(display_df, use_container_width=True, height=500)
     
-    if filter_type == "Region":
-        # Define region order for readability
-        region_order = ["North America", "South America", "Europe", "Asia", "ETFs", "Crypto"]
-        available_regions = sorted([r for r in top50["Region"].unique() if r in region_order] + [r for r in top50["Region"].unique() if r not in region_order])
-        regions = ["All"] + available_regions
-        selected_region = st.selectbox("Select Region:", regions)
-        if selected_region == "All":
-            display_df = top50
+    # Portfolio management
+    st.markdown("---")
+    st.subheader("📋 Your Portfolio")
+    if "portfolio" not in st.session_state:
+        if os.path.exists("portfolio_user.json"):
+            with open("portfolio_user.json", "r") as f:
+                st.session_state.portfolio = json.load(f)
         else:
-            display_df = top50[top50["Region"] == selected_region]
-        st.subheader(f"📋 {selected_region} Companies (Sorted by Buffett Score)")
-        st.dataframe(display_df, use_container_width=True, height=600)
-    else:  # Country
-        countries = ["All"] + sorted(top50["Country"].unique())
-        selected_country = st.selectbox("Select Country:", countries)
-        if selected_country == "All":
-            display_df = top50
-        else:
-            display_df = top50[top50["Country"] == selected_country]
-        st.subheader(f"📋 {selected_country} Companies (Sorted by Buffett Score)")
-        st.dataframe(display_df, use_container_width=True, height=600)
+            st.session_state.portfolio = ["AAPL", "MSFT", "GOOGL"]
+    
+    new_asset = st.text_input("Add ticker to portfolio")
+    if st.button("Add"):
+        if new_asset.upper() not in st.session_state.portfolio:
+            st.session_state.portfolio.append(new_asset.upper())
+            with open("portfolio_user.json", "w") as f:
+                json.dump(st.session_state.portfolio, f)
+            st.rerun()
+    
+    for asset in st.session_state.portfolio:
+        col1, col2 = st.columns([4, 1])
+        col1.write(asset)
+        if col2.button("Remove", key=asset):
+            st.session_state.portfolio.remove(asset)
+            with open("portfolio_user.json", "w") as f:
+                json.dump(st.session_state.portfolio, f)
+            st.rerun()
+    
+    # Detailed analysis for selected portfolio asset
+    if st.session_state.portfolio:
+        selected = st.selectbox("Select asset for detailed analysis", st.session_state.portfolio)
+        if selected:
+            with st.spinner(f"Loading data for {selected}..."):
+                current_price = get_current_price(selected)
+                hist = get_stock_data(selected, period="2d", interval="1d")
+                if not hist.empty and len(hist) >= 2:
+                    prev_close = hist["Close"].iloc[-2]
+                    daily_change = (current_price - prev_close) / prev_close * 100
+                else:
+                    daily_change = 0.0
+                news_list = get_all_news(selected, max_news=50)
+                sentiment_score, news_count, sentiment_counts = aggregate_sentiment(news_list)
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Current Price", f"${current_price:.2f}", delta=f"{daily_change:+.2f}%")
+                row = top50[top50["Ticker"] == selected]
+                if not row.empty:
+                    buffett = row.iloc[0]["Buffett Score (0-100)"]
+                    col2.metric("Buffett Score", f"{buffett}/100")
+                else:
+                    data = fetch_financial_data(selected, timeout=6)
+                    score_data = buffett_score_from_data(data)
+                    col2.metric("Buffett Score", f"{score_data['total']}/100")
+                col3.metric("Total News (last day)", news_count)
+                
+                st.markdown("---")
+                st.subheader("📰 Last 10 News Feed")
+                if news_list:
+                    for i, news in enumerate(news_list[:10]):
+                        st.markdown(f"**{i+1}. {news['title']}**")
+                        st.caption(f"Source: {news['source']} | {news['date']}")
+                        st.markdown(f"[Read more]({news['url']})")
+                        st.markdown("---")
+                else:
+                    st.info("No recent news found.")
+                
+                st.subheader("📊 News Sentiment Analysis")
+                if news_count > 0:
+                    col_left, col_right = st.columns([0.6, 0.4])
+                    with col_left:
+                        labels, values, colors = [], [], []
+                        if sentiment_counts["POSITIVE"] > 0:
+                            labels.append("Positive"); values.append(sentiment_counts["POSITIVE"]); colors.append("#4caf50")
+                        if sentiment_counts["NEGATIVE"] > 0:
+                            labels.append("Negative"); values.append(sentiment_counts["NEGATIVE"]); colors.append("#f44336")
+                        if sentiment_counts["NEUTRAL"] > 0:
+                            labels.append("Neutral"); values.append(sentiment_counts["NEUTRAL"]); colors.append("#ffc107")
+                        fig_pie = go.Figure(data=[go.Pie(labels=labels, values=values, marker=dict(colors=colors), hole=0.4)])
+                        fig_pie.update_layout(template="plotly_dark", height=350)
+                        st.plotly_chart(fig_pie, use_container_width=True)
+                    with col_right:
+                        fig_gauge = go.Figure(go.Indicator(
+                            mode="gauge+number",
+                            value=sentiment_score * 100,
+                            title={"text": "Overall Sentiment (%)"},
+                            gauge={
+                                "axis": {"range": [0, 100]},
+                                "bar": {"color": "#4caf50"},
+                                "steps": [
+                                    {"range": [0, 30], "color": "#f44336"},
+                                    {"range": [30, 70], "color": "#ffc107"},
+                                    {"range": [70, 100], "color": "#4caf50"}
+                                ]
+                            }
+                        ))
+                        fig_gauge.update_layout(template="plotly_dark", height=300)
+                        st.plotly_chart(fig_gauge, use_container_width=True)
+                        st.markdown(f"🟢 Positive: {sentiment_counts['POSITIVE']} ({sentiment_counts['POSITIVE']/news_count:.0%})")
+                        st.markdown(f"🔴 Negative: {sentiment_counts['NEGATIVE']} ({sentiment_counts['NEGATIVE']/news_count:.0%})")
+                        st.markdown(f"⚪ Neutral: {sentiment_counts['NEUTRAL']} ({sentiment_counts['NEUTRAL']/news_count:.0%})")
+                else:
+                    st.info("No recent news found.")
+                
+                rec_text, rec_color, rec_just = get_recommendation(daily_change, sentiment_score, news_count)
+                st.markdown(f"""
+                <div class="rec-box">
+                    <h2 style="color:{rec_color}; margin:0;">{rec_text}</h2>
+                    <p style="color:#ccd6f0;">{rec_just}</p>
+                    <small>Based on {news_count} news articles and daily change {daily_change:+.2f}%</small>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    st.caption("Data sources: xfinlink, Alpha Vantage, Financial Modeling Prep, Tiingo, yfinance | News: Google RSS | Sentiment: FinBERT")
 
-# ============================================
-# USER PORTFOLIO SCORES
-# ============================================
-st.markdown("---")
-with st.spinner("Analyzing your portfolio..."):
-    portfolio_scores = []
-    for sym in st.session_state.portfolio:
-        score_data = buffett_score(sym)
-        price = get_current_price(sym)
-        region_row = ticker_df[ticker_df['Ticker'] == sym]['Region']
-        country_row = ticker_df[ticker_df['Ticker'] == sym]['Country']
-        region = region_row.values[0] if not region_row.empty else "Unknown"
-        country = country_row.values[0] if not country_row.empty else "Unknown"
-        portfolio_scores.append({
-            "Ticker": sym,
-            "Region": region,
-            "Country": country,
-            "Buffett Score (0-100)": score_data["total"],
-            "Profitability (ROE)": score_data["profitability"],
-            "Valuation (P/B)": score_data["valuation"],
-            "Debt (D/E)": score_data["debt"],
-            "Consistency": score_data["consistency"],
-            "Current Price": f"${price:.2f}" if price > 0 else "N/A",
-        })
-    df_portfolio = pd.DataFrame(portfolio_scores)
-    df_portfolio = df_portfolio.sort_values("Buffett Score (0-100)", ascending=False)
-    st.subheader("📊 Your Portfolio Buffett Scores (Ranked)")
-    def color_scores(val):
-        if val >= 70: return "background-color: #2e7d32; color: white"
-        elif val >= 40: return "background-color: #f9a825; color: black"
-        elif val >= 10: return "background-color: #f57c00; color: white"
-        else: return "background-color: #c62828; color: white"
-    styled_portfolio = df_portfolio.style.map(color_scores, subset=["Profitability (ROE)", "Valuation (P/B)", "Debt (D/E)", "Consistency"])
-    st.dataframe(styled_portfolio, use_container_width=True, height=400)
-
-# ============================================
-# DETAILED ANALYSIS (WITHOUT NEWS LIST)
-# ============================================
-st.markdown("---")
-st.subheader("📈 Detailed Asset Analysis")
-selected_asset = st.selectbox("Select an asset from your portfolio:", st.session_state.portfolio)
-
-with st.spinner(f"Loading data for {selected_asset}..."):
-    try:
-        current_price = get_current_price(selected_asset)
-        hist = get_stock_data(selected_asset, period="2d", interval="1d")
-        if not hist.empty and len(hist) >= 2:
-            prev_close = hist["Close"].iloc[-2]
-            daily_change = (current_price - prev_close) / prev_close * 100
-        else:
-            daily_change = 0.0
-        
-        news_list = get_all_news(selected_asset, max_news=20)
-        sentiment_score, news_count, sentiment_counts = aggregate_sentiment(news_list)
-        
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Current Price", f"${current_price:.2f}", delta=f"{daily_change:+.2f}%")
-        
-        asset_score_row = top50[top50["Ticker"] == selected_asset] if not top50.empty else None
-        if asset_score_row is not None and not asset_score_row.empty:
-            buffett = asset_score_row.iloc[0]["Buffett Score (0-100)"]
-            col2.metric("Buffett Score", f"{buffett}/100")
-        else:
-            score_data = buffett_score(selected_asset)
-            col2.metric("Buffett Score", f"{score_data['total']}/100")
-        
-        col3.metric("Total News (last day)", news_count)
-        
-        st.markdown("---")
-        st.subheader("📰 News Sentiment Analysis")
-        
-        if news_count > 0:
-            col_left, col_right = st.columns([0.6, 0.4])
-            with col_left:
-                labels, values, colors = [], [], []
-                if sentiment_counts["POSITIVE"] > 0:
-                    labels.append("Positive"); values.append(sentiment_counts["POSITIVE"]); colors.append("#4caf50")
-                if sentiment_counts["NEGATIVE"] > 0:
-                    labels.append("Negative"); values.append(sentiment_counts["NEGATIVE"]); colors.append("#f44336")
-                if sentiment_counts["NEUTRAL"] > 0:
-                    labels.append("Neutral"); values.append(sentiment_counts["NEUTRAL"]); colors.append("#ffc107")
-                fig_pie = go.Figure(data=[go.Pie(labels=labels, values=values, marker=dict(colors=colors), hole=0.4)])
-                fig_pie.update_layout(template="plotly_dark", height=350)
-                st.plotly_chart(fig_pie, use_container_width=True)
-            with col_right:
-                fig_gauge = go.Figure(go.Indicator(
-                    mode="gauge+number",
-                    value=sentiment_score * 100,
-                    title={"text": "Overall Sentiment (%)"},
-                    gauge={
-                        "axis": {"range": [0, 100]},
-                        "bar": {"color": "#4caf50"},
-                        "steps": [
-                            {"range": [0, 30], "color": "#f44336"},
-                            {"range": [30, 70], "color": "#ffc107"},
-                            {"range": [70, 100], "color": "#4caf50"}
-                        ]
-                    }
-                ))
-                fig_gauge.update_layout(template="plotly_dark", height=300)
-                st.plotly_chart(fig_gauge, use_container_width=True)
-                st.markdown(f"🟢 Positive: {sentiment_counts['POSITIVE']} ({sentiment_counts['POSITIVE']/news_count:.0%})")
-                st.markdown(f"🔴 Negative: {sentiment_counts['NEGATIVE']} ({sentiment_counts['NEGATIVE']/news_count:.0%})")
-                st.markdown(f"⚪ Neutral: {sentiment_counts['NEUTRAL']} ({sentiment_counts['NEUTRAL']/news_count:.0%})")
-        else:
-            st.info("No recent news found.")
-        
-        rec_text, rec_color, rec_just = get_recommendation(daily_change, sentiment_score, news_count)
-        st.markdown(f"""
-        <div class="rec-box">
-            <h2 style="color:{rec_color}; margin:0;">{rec_text}</h2>
-            <p style="color:#ccd6f0;">{rec_just}</p>
-            <small>Based on {news_count} news articles and daily change {daily_change:+.2f}%</small>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.caption("ℹ️ Detailed news list has been removed. Only aggregated sentiment is shown.")
-        
-    except Exception as e:
-        st.error(f"Error: {str(e)}")
+if __name__ == "__main__":
+    main()
