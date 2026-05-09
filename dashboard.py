@@ -181,7 +181,6 @@ st.markdown("""
 # SHARE FUNCTIONALITY
 # ============================================
 def create_share_url(platform, text, url):
-    """Create share URL for social media platforms."""
     encoded_text = urllib.parse.quote(text)
     encoded_url = urllib.parse.quote(url)
     
@@ -203,80 +202,49 @@ def create_share_url(platform, text, url):
         return "#"
 
 def share_on_platform(platform, ticker, name, score):
-    """Create share button for a specific platform."""
     share_text = f"Just analyzed {ticker} ({name}) on Global Buffett Screener! Buffett Score: {score}/100"
     app_url = "https://global-buffett-screener.streamlit.app"
     share_url = create_share_url(platform, share_text, app_url)
     
     if platform == "tiktok":
-        button_html = f'<a href="{share_url}" target="_blank" class="share-btn share-tiktok">🎵 TikTok</a>'
+        return f'<a href="{share_url}" target="_blank" class="share-btn share-tiktok">🎵 TikTok</a>'
     elif platform == "twitter":
-        button_html = f'<a href="{share_url}" target="_blank" class="share-btn share-twitter">🐦 X (Twitter)</a>'
+        return f'<a href="{share_url}" target="_blank" class="share-btn share-twitter">🐦 X (Twitter)</a>'
     elif platform == "facebook":
-        button_html = f'<a href="{share_url}" target="_blank" class="share-btn share-facebook">📘 Facebook</a>'
+        return f'<a href="{share_url}" target="_blank" class="share-btn share-facebook">📘 Facebook</a>'
     elif platform == "linkedin":
-        button_html = f'<a href="{share_url}" target="_blank" class="share-btn share-linkedin">🔗 LinkedIn</a>'
+        return f'<a href="{share_url}" target="_blank" class="share-btn share-linkedin">🔗 LinkedIn</a>'
     elif platform == "reddit":
-        button_html = f'<a href="{share_url}" target="_blank" class="share-btn share-reddit">🤖 Reddit</a>'
+        return f'<a href="{share_url}" target="_blank" class="share-btn share-reddit">🤖 Reddit</a>'
     elif platform == "telegram":
-        button_html = f'<a href="{share_url}" target="_blank" class="share-btn share-telegram">📨 Telegram</a>'
+        return f'<a href="{share_url}" target="_blank" class="share-btn share-telegram">📨 Telegram</a>'
     elif platform == "whatsapp":
-        button_html = f'<a href="{share_url}" target="_blank" class="share-btn share-whatsapp">💬 WhatsApp</a>'
+        return f'<a href="{share_url}" target="_blank" class="share-btn share-whatsapp">💬 WhatsApp</a>'
     else:
-        button_html = ""
-    
-    return button_html
+        return ""
 
 def display_share_section(ticker, name, score):
-    """Display all share buttons."""
     st.markdown("### 🌐 Share This Analysis")
     st.markdown("Share your investment insights with the community")
     
     col1, col2, col3, col4 = st.columns(4)
-    
     with col1:
-        tiktok_btn = share_on_platform("tiktok", ticker, name, score)
-        st.markdown(tiktok_btn, unsafe_allow_html=True)
-        twitter_btn = share_on_platform("twitter", ticker, name, score)
-        st.markdown(twitter_btn, unsafe_allow_html=True)
-    
+        st.markdown(share_on_platform("tiktok", ticker, name, score), unsafe_allow_html=True)
+        st.markdown(share_on_platform("twitter", ticker, name, score), unsafe_allow_html=True)
     with col2:
-        facebook_btn = share_on_platform("facebook", ticker, name, score)
-        st.markdown(facebook_btn, unsafe_allow_html=True)
-        linkedin_btn = share_on_platform("linkedin", ticker, name, score)
-        st.markdown(linkedin_btn, unsafe_allow_html=True)
-    
+        st.markdown(share_on_platform("facebook", ticker, name, score), unsafe_allow_html=True)
+        st.markdown(share_on_platform("linkedin", ticker, name, score), unsafe_allow_html=True)
     with col3:
-        reddit_btn = share_on_platform("reddit", ticker, name, score)
-        st.markdown(reddit_btn, unsafe_allow_html=True)
-        telegram_btn = share_on_platform("telegram", ticker, name, score)
-        st.markdown(telegram_btn, unsafe_allow_html=True)
-    
+        st.markdown(share_on_platform("reddit", ticker, name, score), unsafe_allow_html=True)
+        st.markdown(share_on_platform("telegram", ticker, name, score), unsafe_allow_html=True)
     with col4:
-        whatsapp_btn = share_on_platform("whatsapp", ticker, name, score)
-        st.markdown(whatsapp_btn, unsafe_allow_html=True)
+        st.markdown(share_on_platform("whatsapp", ticker, name, score), unsafe_allow_html=True)
     
-    # Copy link functionality using JavaScript
     st.markdown("---")
-    copy_html = """
-    <div style="text-align: center; margin-top: 0.5rem;">
-        <button onclick="copyToClipboard()" style="background: #334155; color: white; border: none; padding: 0.3rem 1rem; border-radius: 0.5rem; cursor: pointer;">
-            📋 Copy Share Link
-        </button>
-    </div>
-    <script>
-        function copyToClipboard() {
-            const url = "https://global-buffett-screener.streamlit.app";
-            navigator.clipboard.writeText(url);
-            alert("Link copied to clipboard!");
-        }
-    </script>
-    """
-    st.markdown(copy_html, unsafe_allow_html=True)
-    st.caption("💡 Click any button to share directly or copy the link!")
+    st.caption("💡 Click any button to share directly!")
 
 # ============================================
-# MAJOR INDICES CONFIGURATION
+# MAJOR INDICES CONFIGURATION WITH CORRECT CONSTITUENTS
 # ============================================
 MAJOR_INDICES = {
     "S&P 500": {"ticker": "^GSPC", "region": "US", "color": "#3b82f6", "market": "US Large Cap"},
@@ -291,6 +259,38 @@ MAJOR_INDICES = {
     "Nifty 50": {"ticker": "^NSEI", "region": "Asia", "color": "#a855f7", "market": "Indian Large Cap"},
     "Bovespa": {"ticker": "^BVSP", "region": "South America", "color": "#22c55e", "market": "Brazilian Large Cap"},
 }
+
+def get_index_constituents(ticker):
+    """Get top constituents for any index with CORRECT Bovespa stocks"""
+    predefined = {
+        # US Indices
+        "^GSPC": ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK-B", "JPM", "V"],
+        "^IXIC": ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AVGO", "COST", "NFLX"],
+        "^DJI": ["AAPL", "MSFT", "UNH", "GS", "HD", "CAT", "DIS", "V", "JPM", "CRM"],
+        
+        # European Indices
+        "^STOXX50E": ["ASML.AS", "SAP.DE", "TTE.PA", "SAN.PA", "LIN.DE", "OR.PA", "MC.PA", "AIR.PA", "ALV.DE", "SU.PA"],
+        "^GDAXI": ["SAP.DE", "DTE.DE", "MBG.DE", "VOW3.DE", "ALV.DE", "ADS.DE", "DBK.DE", "BMW.DE", "LIN.DE", "IFX.DE"],
+        "^FTSE": ["SHEL.L", "HSBA.L", "AZN.L", "ULVR.L", "BP.L", "GSK.L", "DGE.L", "RIO.L", "BARC.L", "LLOY.L"],
+        "^FCHI": ["OR.PA", "MC.PA", "TTE.PA", "SAN.PA", "BNP.PA", "AIR.PA", "SU.PA", "CS.PA", "RMS.PA", "STLA.PA"],
+        
+        # Asian Indices
+        "^N225": ["7203.T", "9984.T", "6758.T", "9432.T", "8316.T", "4502.T", "4063.T", "6861.T", "6098.T", "8035.T"],
+        "^HSI": ["0700.HK", "9988.HK", "0941.HK", "1299.HK", "0939.HK", "2318.HK", "3988.HK", "1810.HK", "0388.HK", "2628.HK"],
+        "^NSEI": ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS", "ITC.NS", "KOTAKBANK.NS", "SBIN.NS", "BHARTIARTL.NS", "HCLTECH.NS"],
+        
+        # Bovespa (Brazil) - CORRECT CONSTITUENTS
+        "^BVSP": [
+            "PETR4.SA", "VALE3.SA", "ITUB4.SA", "BBDC4.SA", "ABEV3.SA",
+            "BBAS3.SA", "WEGE3.SA", "ELET3.SA", "SUZB3.SA", "RENT3.SA",
+            "EQTL3.SA", "RAIZ4.SA", "JBSS3.SA", "GGBR4.SA", "PRIO3.SA",
+            "TOTS3.SA", "VBBR3.SA", "UGPA3.SA", "CSAN3.SA", "BRFS3.SA"
+        ]
+    }
+    
+    if ticker in predefined:
+        return predefined[ticker]
+    return ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META"]
 
 # Sentiment lexicon
 POSITIVE_WORDS = {
@@ -307,95 +307,54 @@ NEGATIVE_WORDS = {
 }
 
 def analyze_sentiment(text):
-    """Analyze sentiment of text using lexicon-based approach."""
     if not text:
         return "neutral", 0.5
-    
     text_lower = text.lower()
     words = re.findall(r'\b\w+\b', text_lower)
-    
-    positive_count = sum(1 for word in words if word in POSITIVE_WORDS)
-    negative_count = sum(1 for word in words if word in NEGATIVE_WORDS)
-    
-    total = positive_count + negative_count
+    pos = sum(1 for w in words if w in POSITIVE_WORDS)
+    neg = sum(1 for w in words if w in NEGATIVE_WORDS)
+    total = pos + neg
     if total == 0:
         return "neutral", 0.5
-    
-    sentiment_score = positive_count / total
-    
-    if sentiment_score >= 0.6:
-        return "positive", sentiment_score
-    elif sentiment_score <= 0.4:
-        return "negative", sentiment_score
+    score = pos / total
+    if score >= 0.6:
+        return "positive", score
+    elif score <= 0.4:
+        return "negative", score
     else:
-        return "neutral", sentiment_score
+        return "neutral", score
 
 def analyze_news_sentiment(news_articles):
-    """Analyze sentiment for a list of news articles."""
     if not news_articles:
         return {
             'positive_pct': 0, 'negative_pct': 0, 'neutral_pct': 0,
             'overall_score': 0.5, 'overall_label': 'Neutral',
-            'overall_color': '#f59e0b', 'overall_icon': '🟡',
-            'total_articles': 0
+            'overall_color': '#f59e0b', 'overall_icon': '🟡', 'total_articles': 0
         }
-    
     sentiments = []
-    detailed_scores = []
-    
-    for article in news_articles:
-        text = f"{article.get('title', '')} {article.get('summary', '')}"
-        sentiment, score = analyze_sentiment(text)
-        sentiments.append(sentiment)
-        detailed_scores.append(score)
-    
-    sentiment_counts = Counter(sentiments)
+    scores = []
+    for art in news_articles:
+        text = f"{art.get('title','')} {art.get('summary','')}"
+        s, sc = analyze_sentiment(text)
+        sentiments.append(s)
+        scores.append(sc)
+    cnt = Counter(sentiments)
     total = len(sentiments)
-    
-    positive_pct = (sentiment_counts.get('positive', 0) / total) * 100
-    negative_pct = (sentiment_counts.get('negative', 0) / total) * 100
-    neutral_pct = (sentiment_counts.get('neutral', 0) / total) * 100
-    
-    overall_score = sum(detailed_scores) / len(detailed_scores)
-    
-    if overall_score >= 0.6:
-        overall_label = "Positive"
-        overall_color = "#10b981"
-        overall_icon = "🟢"
-    elif overall_score >= 0.4:
-        overall_label = "Neutral"
-        overall_color = "#f59e0b"
-        overall_icon = "🟡"
+    pos_pct = (cnt.get('positive',0)/total)*100
+    neg_pct = (cnt.get('negative',0)/total)*100
+    neu_pct = (cnt.get('neutral',0)/total)*100
+    overall = sum(scores)/len(scores)
+    if overall >= 0.6:
+        label, color, icon = "Positive", "#10b981", "🟢"
+    elif overall >= 0.4:
+        label, color, icon = "Neutral", "#f59e0b", "🟡"
     else:
-        overall_label = "Negative"
-        overall_color = "#ef4444"
-        overall_icon = "🔴"
-    
+        label, color, icon = "Negative", "#ef4444", "🔴"
     return {
-        'positive_pct': positive_pct,
-        'negative_pct': negative_pct,
-        'neutral_pct': neutral_pct,
-        'overall_score': overall_score,
-        'overall_label': overall_label,
-        'overall_color': overall_color,
-        'overall_icon': overall_icon,
-        'total_articles': total
+        'positive_pct': pos_pct, 'negative_pct': neg_pct, 'neutral_pct': neu_pct,
+        'overall_score': overall, 'overall_label': label, 'overall_color': color,
+        'overall_icon': icon, 'total_articles': total
     }
-
-def get_index_constituents(ticker):
-    """Get top constituents for any index dynamically"""
-    predefined = {
-        "^GSPC": ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK-B", "JPM", "V"],
-        "^IXIC": ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AVGO", "COST", "NFLX"],
-        "^DJI": ["AAPL", "MSFT", "UNH", "GS", "HD", "CAT", "DIS", "V", "JPM", "CRM"],
-        "^NSEI": ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS"],
-        "^HSI": ["0700.HK", "9988.HK", "0941.HK", "1299.HK", "0939.HK", "2318.HK"],
-        "^N225": ["7203.T", "9984.T", "6758.T", "9432.T", "8316.T", "4502.T"],
-    }
-    
-    if ticker in predefined:
-        return predefined[ticker]
-    return ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META"]
 
 # ============================================
 # DATA FETCHING FUNCTIONS
@@ -416,33 +375,27 @@ def fetch_stock_fundamentals(ticker):
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
-        
         roe = info.get("returnOnEquity") or info.get("roe")
         pb = info.get("priceToBook")
         debt_eq = info.get("debtToEquity") or info.get("totalDebtToEquity")
         rev_growth = info.get("revenueGrowth")
-        
         score = 0
         if roe and roe > 0.15:
             score += 40
         elif roe and roe > 0.10:
             score += 20
-            
         if pb and pb < 1.5:
             score += 30
         elif pb and pb < 2.0:
             score += 15
-            
         if debt_eq and debt_eq < 50:
             score += 20
         elif debt_eq and debt_eq < 100:
             score += 10
-            
         if rev_growth and rev_growth > 0.10:
             score += 10
         elif rev_growth and rev_growth > 0:
             score += 5
-            
         return {
             "score": score,
             "roe": roe,
@@ -457,53 +410,47 @@ def fetch_stock_fundamentals(ticker):
 
 @st.cache_data(ttl=1800)
 def fetch_news(ticker, max_news=15):
-    """Fetch news articles for a ticker."""
     news_list = []
-    
     try:
         url = f"https://finnhub.io/api/v1/news?symbol={ticker}&token=demo"
-        response = requests.get(url, timeout=8)
-        if response.status_code == 200:
-            data = response.json()
-            for article in data[:max_news]:
+        resp = requests.get(url, timeout=8)
+        if resp.status_code == 200:
+            data = resp.json()
+            for art in data[:max_news]:
                 news_list.append({
-                    "title": article.get("headline", ""),
-                    "summary": (article.get("summary", "") or "")[:200],
-                    "source": article.get("source", "Finnhub"),
-                    "datetime": article.get("datetime", time.time()),
-                    "url": article.get("url", "#")
+                    "title": art.get("headline", ""),
+                    "summary": (art.get("summary", "") or "")[:200],
+                    "source": art.get("source", "Finnhub"),
+                    "datetime": art.get("datetime", time.time()),
+                    "url": art.get("url", "#")
                 })
     except:
         pass
-    
-    # Generate sample news if needed
     if len(news_list) < 10:
         for i in range(12):
             news_list.append({
-                "title": f"{ticker} Market Update - Important Development {i+1}",
-                "summary": f"Recent market analysis shows interesting trends for {ticker} with potential implications for investors.",
-                "source": ["Bloomberg", "Reuters", "WSJ", "FT"][i % 4],
-                "datetime": time.time() - (i * 3600),
+                "title": f"{ticker} Market Update - Development {i+1}",
+                "summary": f"Recent market analysis shows interesting trends for {ticker}.",
+                "source": ["Bloomberg","Reuters","WSJ","FT"][i%4],
+                "datetime": time.time() - (i*3600),
                 "url": "#"
             })
-    
     return news_list[:15]
 
 # ============================================
 # UI COMPONENTS
 # ============================================
 def display_metric_card(title, value, change=None, color="#3b82f6"):
-    delta_html = ""
+    delta = ""
     if change and change > 0:
-        delta_html = f"<small style='color: #10b981;'>▲ {change:.1f}%</small>"
+        delta = f"<small style='color: #10b981;'>▲ {change:.1f}%</small>"
     elif change and change < 0:
-        delta_html = f"<small style='color: #ef4444;'>▼ {abs(change):.1f}%</small>"
-    
+        delta = f"<small style='color: #ef4444;'>▼ {abs(change):.1f}%</small>"
     st.markdown(f"""
     <div class="metric-card">
         <div style="font-size: 0.875rem; color: #94a3b8;">{title}</div>
         <div style="font-size: 1.75rem; font-weight: bold; color: {color};">{value}</div>
-        {delta_html}
+        {delta}
     </div>
     """, unsafe_allow_html=True)
 
@@ -521,39 +468,34 @@ def display_score_circle(score, title):
     """, unsafe_allow_html=True)
 
 def display_sentiment_gauge(sentiment_data):
-    fig = go.Figure()
-    fig.add_trace(go.Indicator(
+    fig = go.Figure(go.Indicator(
         mode="gauge+number+delta",
-        value=sentiment_data['overall_score'] * 100,
+        value=sentiment_data['overall_score']*100,
         title={"text": f"{sentiment_data['overall_icon']} Market Sentiment", "font": {"size": 14}},
         delta={"reference": 50},
         gauge={
-            "axis": {"range": [0, 100]},
+            "axis": {"range": [0,100]},
             "bar": {"color": sentiment_data['overall_color']},
             "bgcolor": "#1e293b",
             "steps": [
-                {"range": [0, 33], "color": "#f44336"},
-                {"range": [33, 66], "color": "#ffc107"},
-                {"range": [66, 100], "color": "#4caf50"}
+                {"range": [0,33], "color": "#f44336"},
+                {"range": [33,66], "color": "#ffc107"},
+                {"range": [66,100], "color": "#4caf50"}
             ]
         }
     ))
-    fig.update_layout(height=280, margin=dict(l=20, r=20, t=60, b=20))
+    fig.update_layout(height=280, margin=dict(l=20,r=20,t=60,b=20))
     st.plotly_chart(fig, use_container_width=True)
 
 def display_sentiment_distribution(sentiment_data):
     fig = go.Figure(data=[go.Pie(
-        labels=['Positive', 'Neutral', 'Negative'],
+        labels=['Positive','Neutral','Negative'],
         values=[sentiment_data['positive_pct'], sentiment_data['neutral_pct'], sentiment_data['negative_pct']],
-        marker=dict(colors=['#10b981', '#f59e0b', '#ef4444']),
-        hole=0.4,
-        textinfo='label+percent'
+        marker=dict(colors=['#10b981','#f59e0b','#ef4444']),
+        hole=0.4, textinfo='label+percent'
     )])
-    fig.update_layout(
-        title=f"Based on {sentiment_data['total_articles']} Articles",
-        height=280,
-        margin=dict(l=20, r=20, t=60, b=20)
-    )
+    fig.update_layout(title=f"Based on {sentiment_data['total_articles']} Articles", height=280,
+                      margin=dict(l=20,r=20,t=60,b=20))
     st.plotly_chart(fig, use_container_width=True)
 
 # ============================================
@@ -578,11 +520,9 @@ def main():
         
         **📊 Revenue Growth > 10%** (Growth)
         """)
-        
         st.markdown("---")
         st.markdown("### 📊 Sentiment Analysis")
         st.caption("Analyzes news articles to determine market sentiment")
-        
         st.markdown("---")
         st.markdown("### 📈 Version")
         st.caption("v2.5 - Social Sharing Feature")
@@ -603,7 +543,6 @@ def main():
         st.session_state.selected_index_name = "S&P 500"
     
     st.markdown("---")
-    
     index_ticker = st.session_state.selected_index
     index_name = st.session_state.selected_index_name
     
@@ -611,145 +550,123 @@ def main():
         hist = fetch_index_data(index_ticker)
         if not hist.empty:
             current = hist["Close"].iloc[-1]
-            prev = hist["Close"].iloc[-2] if len(hist) > 1 else current
-            change = ((current - prev) / prev) * 100
-            
+            prev = hist["Close"].iloc[-2] if len(hist)>1 else current
+            change = ((current - prev)/prev)*100
             col1, col2 = st.columns(2)
             with col1:
                 display_metric_card("Current Level", f"{current:,.0f}", change)
             with col2:
                 display_metric_card("Daily Change", f"{change:+.2f}%")
-            
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=hist.index, y=hist["Close"], mode="lines", line=dict(color="#3b82f6", width=2), fill="tozeroy"))
-            fig.update_layout(template="plotly_dark", height=350, margin=dict(l=0, r=0, t=30, b=0))
+            fig = go.Figure(go.Scatter(x=hist.index, y=hist["Close"], mode="lines", line=dict(color="#3b82f6", width=2), fill="tozeroy"))
+            fig.update_layout(template="plotly_dark", height=350, margin=dict(l=0,r=0,t=30,b=0))
             st.plotly_chart(fig, use_container_width=True)
     
     st.markdown(f"## 🎯 Top Opportunities in {index_name}")
     constituents = get_index_constituents(index_ticker)
-    
     opportunities = []
     for ticker in constituents[:10]:
-        fund_data = fetch_stock_fundamentals(ticker)
-        if fund_data and fund_data["score"] > 0:
+        fd = fetch_stock_fundamentals(ticker)
+        if fd and fd["score"] > 0:
             opportunities.append({
                 "Ticker": ticker,
-                "Company": fund_data["name"][:25],
-                "Sector": fund_data["sector"],
-                "Score": fund_data["score"],
-                "ROE": f"{fund_data['roe']*100:.1f}%" if fund_data['roe'] else "N/A",
-                "P/B": f"{fund_data['pb']:.2f}" if fund_data['pb'] else "N/A",
+                "Company": fd["name"][:25],
+                "Sector": fd["sector"],
+                "Score": fd["score"],
+                "ROE": f"{fd['roe']*100:.1f}%" if fd['roe'] else "N/A",
+                "P/B": f"{fd['pb']:.2f}" if fd['pb'] else "N/A",
             })
-    
     if opportunities:
         df_opp = pd.DataFrame(opportunities).sort_values("Score", ascending=False)
         st.dataframe(df_opp.head(10), use_container_width=True, hide_index=True)
+    else:
+        st.info(f"No Buffett-style opportunities found in {index_name}. Try another index.")
     
     st.markdown("---")
     st.markdown("## 💼 My Watchlist")
-    
     if "watchlist" not in st.session_state:
         st.session_state.watchlist = ["AAPL", "MSFT", "GOOGL"]
-    
-    col_add1, col_add2 = st.columns([3, 1])
+    col_add1, col_add2 = st.columns([3,1])
     with col_add1:
-        new_ticker = st.text_input("Add ticker", placeholder="Enter ticker (e.g., JPM)")
+        new_ticker = st.text_input("Add ticker", placeholder="Enter ticker (e.g., JPM, PETR4.SA)")
     with col_add2:
         st.write("")
         if st.button("➕ Add"):
             if new_ticker and new_ticker.upper() not in st.session_state.watchlist:
                 st.session_state.watchlist.append(new_ticker.upper())
                 st.rerun()
-    
     for ticker in st.session_state.watchlist:
-        col1, col2, col3 = st.columns([2, 2, 1])
-        fund_data = fetch_stock_fundamentals(ticker)
-        if fund_data:
+        col1, col2, col3 = st.columns([2,2,1])
+        fd = fetch_stock_fundamentals(ticker)
+        if fd:
             col1.write(f"**{ticker}**")
-            col2.write(fund_data["name"][:30])
-            col3.write(f"Score: {fund_data['score']}")
+            col2.write(fd["name"][:30])
+            col3.write(f"Score: {fd['score']}")
         else:
             col1.write(f"**{ticker}**")
             col2.write("Data unavailable")
             col3.write("N/A")
-        
-        if st.button(f"Remove", key=f"remove_{ticker}"):
+        if st.button("Remove", key=f"remove_{ticker}"):
             st.session_state.watchlist.remove(ticker)
             st.rerun()
     
     st.markdown("---")
     st.markdown("## 🔍 Stock Deep Dive with News Sentiment")
-    
     all_tickers = list(set(st.session_state.watchlist + [opp["Ticker"] for opp in opportunities[:5]]))
     selected = st.selectbox("Select a stock for detailed analysis", all_tickers if all_tickers else ["AAPL"])
     
     if selected:
         with st.spinner(f"Loading {selected} data..."):
-            fund_data = fetch_stock_fundamentals(selected)
+            fd = fetch_stock_fundamentals(selected)
             news = fetch_news(selected, max_news=15)
-            sentiment_data = analyze_news_sentiment(news)
-            
-            if fund_data:
-                col1, col2 = st.columns([1, 2])
+            sentiment = analyze_news_sentiment(news)
+            if fd:
+                col1, col2 = st.columns([1,2])
                 with col1:
-                    display_score_circle(fund_data["score"], "Buffett Score")
-                    st.metric("ROE", f"{fund_data['roe']*100:.1f}%" if fund_data['roe'] else "N/A")
-                    st.metric("P/B", f"{fund_data['pb']:.2f}" if fund_data['pb'] else "N/A")
-                
+                    display_score_circle(fd["score"], "Buffett Score")
+                    st.metric("ROE", f"{fd['roe']*100:.1f}%" if fd['roe'] else "N/A")
+                    st.metric("P/B", f"{fd['pb']:.2f}" if fd['pb'] else "N/A")
                 with col2:
-                    st.markdown(f"### {fund_data['name']}")
-                    st.markdown(f"**Sector:** {fund_data['sector']}")
-                    
-                    if fund_data["score"] >= 70:
+                    st.markdown(f"### {fd['name']}")
+                    st.markdown(f"**Sector:** {fd['sector']}")
+                    if fd["score"] >= 70:
                         st.success("✅ STRONG BUY - Meets most of Buffett's criteria")
-                    elif fund_data["score"] >= 50:
+                    elif fd["score"] >= 50:
                         st.info("📊 ACCUMULATE - Good fundamentals")
-                    elif fund_data["score"] >= 30:
+                    elif fd["score"] >= 30:
                         st.warning("⚠️ HOLD - Mixed signals")
                     else:
                         st.error("❌ AVOID - Does not meet Buffett's criteria")
                 
-                # Share buttons section
-                display_share_section(selected, fund_data['name'], fund_data["score"])
-                
+                display_share_section(selected, fd['name'], fd["score"])
                 st.markdown("---")
-                st.markdown(f"### 📰 News Sentiment Analysis ({sentiment_data['total_articles']} Articles)")
-                
+                st.markdown(f"### 📰 News Sentiment Analysis ({sentiment['total_articles']} Articles)")
                 sent_col1, sent_col2 = st.columns(2)
                 with sent_col1:
-                    display_sentiment_gauge(sentiment_data)
+                    display_sentiment_gauge(sentiment)
                 with sent_col2:
-                    display_sentiment_distribution(sentiment_data)
+                    display_sentiment_distribution(sentiment)
                 
                 # Sentiment summary
                 col_pos, col_neu, col_neg = st.columns(3)
                 with col_pos:
-                    pos_count = int(sentiment_data['positive_pct'] / 100 * sentiment_data['total_articles']) if sentiment_data['total_articles'] > 0 else 0
-                    st.metric("📈 Positive Articles", pos_count, delta=f"{sentiment_data['positive_pct']:.0f}%")
+                    pos_cnt = int(sentiment['positive_pct']/100 * sentiment['total_articles']) if sentiment['total_articles']>0 else 0
+                    st.metric("📈 Positive Articles", pos_cnt, delta=f"{sentiment['positive_pct']:.0f}%")
                 with col_neu:
-                    neu_count = int(sentiment_data['neutral_pct'] / 100 * sentiment_data['total_articles']) if sentiment_data['total_articles'] > 0 else 0
-                    st.metric("⚪ Neutral Articles", neu_count, delta=f"{sentiment_data['neutral_pct']:.0f}%")
+                    neu_cnt = int(sentiment['neutral_pct']/100 * sentiment['total_articles']) if sentiment['total_articles']>0 else 0
+                    st.metric("⚪ Neutral Articles", neu_cnt, delta=f"{sentiment['neutral_pct']:.0f}%")
                 with col_neg:
-                    neg_count = int(sentiment_data['negative_pct'] / 100 * sentiment_data['total_articles']) if sentiment_data['total_articles'] > 0 else 0
-                    st.metric("📉 Negative Articles", neg_count, delta=f"{sentiment_data['negative_pct']:.0f}%")
+                    neg_cnt = int(sentiment['negative_pct']/100 * sentiment['total_articles']) if sentiment['total_articles']>0 else 0
+                    st.metric("📉 Negative Articles", neg_cnt, delta=f"{sentiment['negative_pct']:.0f}%")
                 
-                # News articles
                 st.markdown("#### 📑 Recent News Articles")
-                
-                for idx, article in enumerate(news[:12]):
-                    title = article.get('title', '')
-                    summary = article.get('summary', '')
-                    source = article.get('source', 'Unknown')
-                    
-                    sentiment, _ = analyze_sentiment(f"{title} {summary}")
-                    
-                    if sentiment == "positive":
-                        badge = '<span class="sentiment-positive">🟢 Positive</span>'
-                    elif sentiment == "negative":
-                        badge = '<span class="sentiment-negative">🔴 Negative</span>'
-                    else:
-                        badge = '<span class="sentiment-neutral">🟡 Neutral</span>'
-                    
+                for idx, art in enumerate(news[:12]):
+                    title = art.get('title','')
+                    summary = art.get('summary','')
+                    source = art.get('source','Unknown')
+                    sent, _ = analyze_sentiment(f"{title} {summary}")
+                    badge = '<span class="sentiment-positive">🟢 Positive</span>' if sent=="positive" else \
+                            '<span class="sentiment-negative">🔴 Negative</span>' if sent=="negative" else \
+                            '<span class="sentiment-neutral">🟡 Neutral</span>'
                     st.markdown(f"""
                     <div class="news-item">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
