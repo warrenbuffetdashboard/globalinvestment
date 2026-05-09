@@ -280,7 +280,7 @@ def build_ticker_universe():
     return df
 
 # ============================================
-# 2. FIVE-SOURCE FUNDAMENTAL DATA FETCHER
+# 2. FIVE-SOURCE FUNDAMENTAL DATA FETCHER (with YFRateLimitError handling)
 # ============================================
 def fetch_financial_data(ticker, timeout=6):
     """Try 5 sources in order: xfinlink, Alpha Vantage, FMP, Tiingo, yfinance."""
@@ -342,8 +342,9 @@ def fetch_financial_data(ticker, timeout=6):
         except:
             pass
     
-    # 5. yfinance (final fallback)
+    # 5. yfinance (final fallback) – with rate limit handling
     try:
+        from yfinance.exceptions import YFRateLimitError
         stock = yf.Ticker(ticker)
         info = stock.info
         roe = info.get("returnOnEquity") or info.get("roe")
@@ -352,6 +353,10 @@ def fetch_financial_data(ticker, timeout=6):
         rev_growth = info.get("revenueGrowth")
         if any(v is not None for v in [roe, pb, debt_eq, rev_growth]):
             return {"roe": roe, "pb": pb, "debt_to_equity": debt_eq, "revenue_growth": rev_growth}
+    except YFRateLimitError:
+        # Rate limit hit – sleep briefly and return None (do not cache)
+        time.sleep(1)
+        return None
     except:
         pass
     return None
@@ -437,7 +442,7 @@ def save_cached_scores(scores_dict):
         json.dump(scores_dict, f)
 
 # ============================================
-# 4. BATCHED ANALYSIS WITH PROGRESS BAR
+# 4. BATCHED ANALYSIS WITH PROGRESS BAR (concurrency reduced to 10)
 # ============================================
 def analyze_all_assets(ticker_df, force_refresh=False):
     cached = load_cached_scores() if not force_refresh else {}
@@ -507,7 +512,7 @@ def analyze_all_assets(ticker_df, force_refresh=False):
             f"Batch {batch_idx+1}/{num_batches} (assets {batch_start+1}-{batch_end}) | "
             f"Elapsed: {elapsed:.1f}s | ETA: {eta:.1f}s | Score candidates found: {len(results)}"
         )
-        with ThreadPoolExecutor(max_workers=20) as executor:
+        with ThreadPoolExecutor(max_workers=10) as executor:
             futures = {executor.submit(process_ticker, ticker): ticker for ticker in batch_tickers}
             for future in as_completed(futures):
                 res = future.result()
