@@ -12,6 +12,7 @@ import time
 import requests
 import re
 from collections import Counter
+import urllib.parse
 
 # Disable warnings
 warnings.filterwarnings("ignore")
@@ -141,6 +142,43 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(59,130,246,0.3);
     }
     
+    /* Share button styling */
+    .share-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.4rem 1rem;
+        margin: 0.2rem;
+        border-radius: 0.5rem;
+        text-decoration: none;
+        font-size: 0.85rem;
+        font-weight: 500;
+        transition: all 0.2s;
+        cursor: pointer;
+        border: none;
+        gap: 0.5rem;
+    }
+    .share-btn:hover {
+        transform: translateY(-2px);
+        opacity: 0.9;
+    }
+    .share-tiktok { background: #000000; color: white; border: 1px solid #00f2ea; }
+    .share-twitter { background: #1DA1F2; color: white; }
+    .share-facebook { background: #4267B2; color: white; }
+    .share-linkedin { background: #0077B5; color: white; }
+    .share-reddit { background: #FF4500; color: white; }
+    .share-telegram { background: #0088cc; color: white; }
+    .share-whatsapp { background: #25D366; color: white; }
+    
+    /* Share container */
+    .share-container {
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        padding: 1rem;
+        border-radius: 1rem;
+        margin-top: 1rem;
+        border: 1px solid #334155;
+    }
+    
     /* Hide default streamlit elements */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -162,6 +200,65 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ============================================
+# SHARE FUNCTIONALITY
+# ============================================
+def create_share_urls(platform, text, url=None):
+    """Create share URLs for different social media platforms."""
+    encoded_text = urllib.parse.quote(text)
+    current_url = url or "https://global-buffett-screener.streamlit.app"
+    encoded_url = urllib.parse.quote(current_url)
+    
+    share_urls = {
+        "tiktok": f"https://www.tiktok.com/@share?text={encoded_text}&url={encoded_url}",
+        "twitter": f"https://twitter.com/intent/tweet?text={encoded_text}&url={encoded_url}",
+        "facebook": f"https://www.facebook.com/sharer/sharer.php?u={encoded_url}&quote={encoded_text}",
+        "linkedin": f"https://www.linkedin.com/sharing/share-offsite/?url={encoded_url}&title={encoded_text}",
+        "reddit": f"https://reddit.com/submit?url={encoded_url}&title={encoded_text}",
+        "telegram": f"https://t.me/share/url?url={encoded_url}&text={encoded_text}",
+        "whatsapp": f"https://wa.me/?text={encoded_text}%20{encoded_url}"
+    }
+    
+    return share_urls.get(platform, "#")
+
+def display_share_buttons(stock_ticker, stock_name, buffett_score):
+    """Display social media share buttons."""
+    share_text = f"📊 Just analyzed {stock_ticker} ({stock_name}) on Global Buffett Screener! Buffett Score: {buffett_score}/100 - Value investing insights! 🚀"
+    
+    st.markdown("### 🌐 Share This Analysis")
+    st.markdown("Share your insights with the investment community")
+    
+    # Create columns for buttons
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        tiktok_url = create_share_urls("tiktok", share_text)
+        st.markdown(f'<a href="{tiktok_url}" target="_blank" class="share-btn share-tiktok">🎵 TikTok</a>', unsafe_allow_html=True)
+        
+        twitter_url = create_share_urls("twitter", share_text)
+        st.markdown(f'<a href="{twitter_url}" target="_blank" class="share-btn share-twitter">🐦 X/Twitter</a>', unsafe_allow_html=True)
+    
+    with col2:
+        facebook_url = create_share_urls("facebook", share_text)
+        st.markdown(f'<a href="{facebook_url}" target="_blank" class="share-btn share-facebook">📘 Facebook</a>', unsafe_allow_html=True)
+        
+        linkedin_url = create_share_urls("linkedin", share_text)
+        st.markdown(f'<a href="{linkedin_url}" target="_blank" class="share-btn share-linkedin">🔗 LinkedIn</a>', unsafe_allow_html=True)
+    
+    with col3:
+        reddit_url = create_share_urls("reddit", share_text)
+        st.markdown(f'<a href="{reddit_url}" target="_blank" class="share-btn share-reddit">🤖 Reddit</a>', unsafe_allow_html=True)
+        
+        telegram_url = create_share_urls("telegram", share_text)
+        st.markdown(f'<a href="{telegram_url}" target="_blank" class="share-btn share-telegram">📨 Telegram</a>', unsafe_allow_html=True)
+    
+    with col4:
+        whatsapp_url = create_share_urls("whatsapp", share_text)
+        st.markdown(f'<a href="{whatsapp_url}" target="_blank" class="share-btn share-whatsapp">💬 WhatsApp</a>', unsafe_allow_html=True)
+    
+    st.markdown("---")
+    st.caption("💡 Tip: Click any share button to share your analysis with friends and followers!")
+
+# ============================================
 # MAJOR INDICES CONFIGURATION
 # ============================================
 MAJOR_INDICES = {
@@ -179,7 +276,7 @@ MAJOR_INDICES = {
     "🇧🇷 Bovespa": {"ticker": "^BVSP", "region": "South America", "color": "#22c55e", "market": "Brazilian Large Cap"},
 }
 
-# Enhanced sentiment lexicon
+# Sentiment lexicon
 POSITIVE_WORDS = {
     'surge', 'rally', 'gain', 'profit', 'beat', 'upgrade', 'buy', 'bullish', 'positive',
     'growth', 'strong', 'record', 'high', 'rise', 'increasing', 'boost', 'opportunity',
@@ -365,42 +462,32 @@ def fetch_news(ticker, max_news=15):
     except:
         pass
     
-    # Generate comprehensive sample news if needed (at least 12 articles)
+    # Generate news if needed
     if len(news_list) < 10:
         sample_titles = [
-            f"{ticker} reports strong quarterly earnings, beating estimates",
-            f"Analysts raise price target for {ticker} citing growth potential",
-            f"{ticker} announces strategic acquisition to expand market share",
+            f"{ticker} reports strong quarterly earnings",
+            f"Analysts raise price target for {ticker}",
+            f"{ticker} announces strategic acquisition",
             f"Institutional investors increase stakes in {ticker}",
-            f"{ticker} launches innovative product line, shares rally",
-            f"Market outlook for {ticker} remains bullish amid sector growth",
-            f"{ticker} declares special dividend, rewarding shareholders",
-            f"Technical analysis shows {ticker} breaking key resistance levels",
-            f"{ticker} expands into new markets, driving revenue growth",
-            f"Credit rating agency upgrades {ticker} outlook to positive",
-            f"{ticker} named top pick for 2024 by major investment bank",
-            f"Short interest in {ticker} declines as sentiment improves",
-            f"{ticker} beats earnings estimates, raises full-year guidance",
-            f"Partnership announcement positions {ticker} for accelerated growth",
-            f"Share buyback program announced by {ticker} board"
+            f"{ticker} launches innovative product line",
+            f"Market outlook for {ticker} remains bullish",
+            f"{ticker} declares special dividend",
+            f"Technical analysis shows {ticker} breaking resistance",
+            f"{ticker} expands into new markets",
+            f"Credit rating agency upgrades {ticker}"
         ]
         
         sample_summaries = [
-            "The company reported revenue growth of 18% year-over-year, significantly above consensus estimates.",
-            "Following the strong quarterly performance, multiple analysts have revised their price targets upward.",
-            "The strategic move is expected to add significant annual recurring revenue.",
-            "Latest 13F filings show that several prominent hedge funds have added to their positions.",
-            "The new product launch has received positive early reviews from industry experts.",
-            "Sector tailwinds and company-specific catalysts suggest continued momentum.",
-            "The special dividend rewards long-term shareholders with a attractive yield.",
-            "Breaking above the 200-day moving average suggests renewed institutional interest.",
-            "The expansion into Asian markets is expected to add 25% to total addressable market.",
-            "The upgrade reflects improved debt metrics and stronger cash flow generation.",
-            "The stock was highlighted for its strong fundamentals and growth trajectory.",
-            "Declining short interest indicates reduced bearish pressure on the stock.",
-            "The company raised guidance citing strong demand and operational efficiency.",
-            "The strategic partnership opens new revenue streams and market opportunities.",
-            "The buyback program signals management's confidence in the company's valuation."
+            "The company reported revenue growth significantly above estimates.",
+            "Multiple analysts have revised their price targets upward.",
+            "The strategic move is expected to add significant value.",
+            "Major hedge funds have added to their positions.",
+            "The new product has received positive early reviews.",
+            "Sector tailwinds suggest continued momentum.",
+            "The special dividend rewards long-term shareholders.",
+            "Breaking above key levels suggests renewed interest.",
+            "Expansion into new markets drives growth.",
+            "The upgrade reflects improved fundamentals."
         ]
         
         for i in range(min(15, len(sample_titles))):
@@ -508,6 +595,16 @@ def main():
         st.markdown("### 📊 Sentiment Analysis")
         st.caption("Analyzes news articles to determine market sentiment")
         st.caption("🟢 Positive → 🟡 Neutral → 🔴 Negative")
+        
+        st.markdown("---")
+        st.markdown("### 🌐 Quick Share")
+        share_text = "📊 Just used Global Buffett Screener! Check it out:"
+        st.markdown(f'<a href="{create_share_urls("twitter", share_text)}" target="_blank" style="display: block; margin: 0.5rem 0; color: #1DA1F2; text-decoration: none;">🐦 Share on X</a>', unsafe_allow_html=True)
+        st.markdown(f'<a href="{create_share_urls("linkedin", share_text)}" target="_blank" style="display: block; margin: 0.5rem 0; color: #0077B5; text-decoration: none;">🔗 Share on LinkedIn</a>', unsafe_allow_html=True)
+        
+        st.markdown("---")
+        st.markdown("### 📈 Version")
+        st.caption("v2.5 - Social Sharing Feature")
     
     st.markdown("## 🌟 Global Market Overview")
     cols = st.columns(4)
@@ -604,7 +701,7 @@ def main():
     selected = st.selectbox("Select a stock for detailed analysis", all_tickers if all_tickers else ["AAPL"])
     
     if selected:
-        with st.spinner(f"Loading {selected} data and analyzing {selected} news sentiment..."):
+        with st.spinner(f"Loading {selected} data..."):
             fund_data = fetch_stock_fundamentals(selected)
             news = fetch_news(selected, max_news=15)
             sentiment_data = analyze_news_sentiment(news)
@@ -629,6 +726,9 @@ def main():
                     else:
                         st.error("❌ AVOID - Does not meet Buffett's criteria")
                 
+                # Share buttons
+                display_share_buttons(selected, fund_data['name'], fund_data["score"])
+                
                 st.markdown("---")
                 st.markdown(f"### 📰 News Sentiment Analysis ({sentiment_data['total_articles']} Articles)")
                 
@@ -638,47 +738,17 @@ def main():
                 with sent_col2:
                     display_sentiment_distribution(sentiment_data)
                 
-                # Sentiment summary metrics
+                # Sentiment summary
                 col_pos, col_neu, col_neg = st.columns(3)
                 with col_pos:
-                    st.metric("Positive Articles", f"{int(sentiment_data['positive_pct'] / 100 * sentiment_data['total_articles'])}", 
-                             delta=f"{sentiment_data['positive_pct']:.0f}%")
+                    pos_count = int(sentiment_data['positive_pct'] / 100 * sentiment_data['total_articles']) if sentiment_data['total_articles'] > 0 else 0
+                    st.metric("📈 Positive", pos_count, delta=f"{sentiment_data['positive_pct']:.0f}%")
                 with col_neu:
-                    st.metric("Neutral Articles", f"{int(sentiment_data['neutral_pct'] / 100 * sentiment_data['total_articles'])}",
-                             delta=f"{sentiment_data['neutral_pct']:.0f}%")
+                    neu_count = int(sentiment_data['neutral_pct'] / 100 * sentiment_data['total_articles']) if sentiment_data['total_articles'] > 0 else 0
+                    st.metric("⚪ Neutral", neu_count, delta=f"{sentiment_data['neutral_pct']:.0f}%")
                 with col_neg:
-                    st.metric("Negative Articles", f"{int(sentiment_data['negative_pct'] / 100 * sentiment_data['total_articles'])}",
-                             delta=f"{sentiment_data['negative_pct']:.0f}%")
+                    neg_count = int(sentiment_data['negative_pct'] / 100 * sentiment_data['total_articles']) if sentiment_data['total_articles'] > 0 else 0
+                    st.metric("📉 Negative", neg_count, delta=f"{sentiment_data['negative_pct']:.0f}%")
                 
-                st.markdown("#### 📑 Recent News Articles")
-                
-                for idx, article in enumerate(news[:12]):
-                    title = article.get('title', '')
-                    summary = article.get('summary', '')
-                    source = article.get('source', 'Unknown')
-                    
-                    sentiment, _ = analyze_sentiment(f"{title} {summary}")
-                    
-                    if sentiment == "positive":
-                        badge = '<span class="sentiment-positive">🟢 Positive</span>'
-                    elif sentiment == "negative":
-                        badge = '<span class="sentiment-negative">🔴 Negative</span>'
-                    else:
-                        badge = '<span class="sentiment-neutral">🟡 Neutral</span>'
-                    
-                    st.markdown(f"""
-                    <div class="news-item">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                            <strong style="color: #3b82f6;">{title[:100]}</strong>
-                            {badge}
-                        </div>
-                        <div style="font-size: 0.8rem; color: #94a3b8;">{summary[:150]}...</div>
-                        <div style="font-size: 0.7rem; color: #64748b; margin-top: 0.5rem;">Source: {source}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    st.caption("📊 Data: Yahoo Finance | News: Finnhub | Sentiment Analysis")
-
-if __name__ == "__main__":
-    main()
+                # News articles
+                st.markdown("#### 📑 Recent
