@@ -82,6 +82,20 @@ st.markdown("""
         transform: scale(1.02);
     }
     
+    /* Top pick card */
+    .top-pick-card {
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        padding: 1rem;
+        border-radius: 0.75rem;
+        text-align: center;
+        transition: all 0.3s;
+        height: 100%;
+    }
+    .top-pick-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+    }
+    
     /* News item */
     .news-item {
         background: #1e293b;
@@ -193,15 +207,6 @@ def get_index_constituents(ticker):
     if ticker in predefined:
         return predefined[ticker]
     
-    # For any other index, get top holdings from Yahoo Finance
-    try:
-        stock = yf.Ticker(ticker)
-        holdings = stock.get_holdings()
-        if holdings is not None and not holdings.empty:
-            return holdings.index.tolist()[:20]
-    except:
-        pass
-    
     # Default fallback - S&P 500 constituents
     return ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "JPM", "V", "UNH"]
 
@@ -233,7 +238,6 @@ def fetch_stock_fundamentals(ticker):
         pe = info.get("trailingPE")
         debt_eq = info.get("debtToEquity") or info.get("totalDebtToEquity")
         rev_growth = info.get("revenueGrowth")
-        profit_margin = info.get("profitMargins")
         
         # Calculate Buffett score (0-100)
         score = 0
@@ -264,21 +268,17 @@ def fetch_stock_fundamentals(ticker):
             "pe": pe,
             "debt_eq": debt_eq,
             "rev_growth": rev_growth,
-            "profit_margin": profit_margin,
             "name": info.get("longName", ticker),
             "sector": info.get("sector", "Unknown"),
-            "market_cap": info.get("marketCap", 0),
-            "industry": info.get("industry", "Unknown")
         }
     except Exception:
         return None
 
 @st.cache_data(ttl=1800)
-def fetch_news(ticker, max_news=8):
+def fetch_news(ticker, max_news=6):
     """Fetch news for a ticker."""
     news_list = []
     try:
-        # Try Finnhub
         url = f"https://finnhub.io/api/v1/news?symbol={ticker}&token=demo"
         response = requests.get(url, timeout=8)
         if response.status_code == 200:
@@ -295,14 +295,10 @@ def fetch_news(ticker, max_news=8):
         pass
     
     if not news_list:
-        # Return sample news
         news_list = [
             {"title": f"Market analysis: {ticker} shows strong momentum", 
-             "summary": "Recent market trends indicate positive outlook with increasing institutional interest.",
+             "summary": "Recent market trends indicate positive outlook.",
              "source": "Market Insights", "datetime": time.time(), "url": "#"},
-            {"title": f"Analysts update {ticker} price targets", 
-             "summary": "Major financial institutions revise their price targets based on recent performance.",
-             "source": "Financial Times", "datetime": time.time(), "url": "#"},
         ]
     return news_list
 
@@ -360,38 +356,21 @@ def main():
         """)
         
         st.markdown("---")
-        st.markdown("### 📊 Dashboard Settings")
-        auto_refresh = st.checkbox("Auto-refresh data", value=False)
-        if auto_refresh:
-            st.caption("Auto-refreshing every 5 minutes")
-            time.sleep(300)
-            st.rerun()
-        
-        st.markdown("---")
         st.markdown("### ℹ️ About")
-        st.caption("""
-        This screener evaluates stocks based on Warren Buffett's investment principles.
-        Scores range from 0-100, with higher scores indicating better alignment with Buffett's criteria.
-        """)
+        st.caption("Scores range from 0-100, with higher scores indicating better alignment with Buffett's criteria.")
     
     # Main content - Index Selection
     st.markdown("## 🌟 Global Market Overview")
     st.markdown("Select an index to explore its top Buffett-style opportunities")
     
-    # Display indices as clickable cards in a grid
-    rows = (len(MAJOR_INDICES) + 3) // 4
-    for row in range(rows):
-        cols = st.columns(4)
-        for i in range(4):
-            idx = row * 4 + i
-            if idx < len(MAJOR_INDICES):
-                name = list(MAJOR_INDICES.keys())[idx]
-                info = MAJOR_INDICES[name]
-                with cols[i]:
-                    if st.button(f"{name}\n{info['market']}", key=f"index_{idx}", use_container_width=True):
-                        st.session_state.selected_index = info["ticker"]
-                        st.session_state.selected_index_name = name
-                        st.rerun()
+    # Display indices as clickable cards
+    cols = st.columns(4)
+    for idx, (name, info) in enumerate(MAJOR_INDICES.items()):
+        with cols[idx % 4]:
+            if st.button(f"{name}\n{info['market']}", key=f"index_{idx}", use_container_width=True):
+                st.session_state.selected_index = info["ticker"]
+                st.session_state.selected_index_name = name
+                st.rerun()
     
     # Default selected index
     if "selected_index" not in st.session_state:
@@ -409,25 +388,17 @@ def main():
         hist = fetch_index_data(index_ticker, period="1mo")
         
         if not hist.empty:
-            # Index performance cards
             st.markdown(f"## 📈 {index_name} Performance")
-            st.markdown(f"*{index_info['market']} | {index_info['region']}*")
             
             current_price = hist["Close"].iloc[-1]
             prev_close = hist["Close"].iloc[-2] if len(hist) > 1 else current_price
             daily_change = ((current_price - prev_close) / prev_close) * 100
-            weekly_change = ((hist["Close"].iloc[-1] - hist["Close"].iloc[-5]) / hist["Close"].iloc[-5]) * 100 if len(hist) >= 5 else 0
-            monthly_change = ((hist["Close"].iloc[-1] - hist["Close"].iloc[0]) / hist["Close"].iloc[0]) * 100
             
             metric_cols = st.columns(4)
             with metric_cols[0]:
                 display_metric_card("Current Level", f"{current_price:,.0f}", daily_change)
             with metric_cols[1]:
-                display_metric_card("Daily Change", f"{daily_change:+.2f}%", None, "#10b981" if daily_change > 0 else "#ef4444")
-            with metric_cols[2]:
-                display_metric_card("Weekly Change", f"{weekly_change:+.2f}%", None, "#10b981" if weekly_change > 0 else "#ef4444")
-            with metric_cols[3]:
-                display_metric_card("Monthly Change", f"{monthly_change:+.2f}%", None, "#10b981" if monthly_change > 0 else "#ef4444")
+                display_metric_card("Daily Change", f"{daily_change:+.2f}%")
             
             # Index chart
             fig = go.Figure()
@@ -435,25 +406,23 @@ def main():
                 x=hist.index, y=hist["Close"],
                 mode="lines",
                 name=index_name,
-                line=dict(color=index_info.get("color", "#3b82f6"), width=2),
+                line=dict(color="#3b82f6", width=2),
                 fill="tozeroy",
-                fillcolor=f"rgba({int(index_info.get('color', '#3b82f6')[1:3], 16)}, {int(index_info.get('color', '#3b82f6')[3:5], 16)}, {int(index_info.get('color', '#3b82f6')[5:7], 16)}, 0.1)"
+                fillcolor="rgba(59,130,246,0.1)"
             ))
             fig.update_layout(
                 title=f"{index_name} - 30 Day Performance",
                 template="plotly_dark",
                 height=400,
-                hovermode="x unified",
                 margin=dict(l=0, r=0, t=40, b=0)
             )
             st.plotly_chart(fig, use_container_width=True)
     
-    # Buffett Opportunities section - DYNAMIC based on selected index
+    # Buffett Opportunities section
     st.markdown("---")
     st.markdown(f"## 🎯 Top Buffett Opportunities in {index_name}")
-    st.caption(f"Stocks from {index_name} that best match Warren Buffett's investment criteria")
     
-    # Get constituent stocks dynamically for the selected index
+    # Get constituent stocks
     constituents = get_index_constituents(index_ticker)
     
     # Analyze constituents
@@ -461,22 +430,20 @@ def main():
     progress_bar = st.progress(0)
     status_text = st.empty()
     
-    for i, ticker in enumerate(constituents):
-        status_text.text(f"Analyzing {ticker} from {index_name}...")
+    for i, ticker in enumerate(constituents[:15]):  # Limit to 15 for performance
+        status_text.text(f"Analyzing {ticker}...")
         fund_data = fetch_stock_fundamentals(ticker)
         if fund_data and fund_data["score"] > 0:
             opportunities.append({
                 "Ticker": ticker,
-                "Company": fund_data["name"][:35],
+                "Company": fund_data["name"][:30],
                 "Sector": fund_data["sector"],
-                "Industry": fund_data["industry"],
                 "Buffett Score": fund_data["score"],
                 "ROE": f"{fund_data['roe']*100:.1f}%" if fund_data['roe'] else "N/A",
                 "P/B": f"{fund_data['pb']:.2f}" if fund_data['pb'] else "N/A",
                 "D/E": f"{fund_data['debt_eq']:.0f}%" if fund_data['debt_eq'] else "N/A",
-                "Revenue Growth": f"{fund_data['rev_growth']*100:.1f}%" if fund_data['rev_growth'] else "N/A",
             })
-        progress_bar.progress((i + 1) / len(constituents))
+        progress_bar.progress((i + 1) / len(constituents[:15]))
     
     progress_bar.empty()
     status_text.empty()
@@ -485,70 +452,63 @@ def main():
     if opportunities:
         df_opp = pd.DataFrame(opportunities).sort_values("Buffett Score", ascending=False)
         
-        # Statistics summary
-        st.markdown(f"**Found {len(opportunities)} stocks with positive Buffett scores in {index_name}**")
+        # Top 5 picks display
+        st.markdown("### 🏆 Top 5 Picks from this Index")
+        top_picks = df_opp.head(5)
         
-        # Top picks display
-        st.markdown("### 🏆 Top 3 Picks from this Index")
-        top_picks = df_opp.head(3)
-        
+        # Display in 2 rows
         pick_cols = st.columns(3)
-        for idx, (_, row) in enumerate(top_picks.iterrows()):
+        for idx in range(min(3, len(top_picks))):
+            row = top_picks.iloc[idx]
             with pick_cols[idx]:
                 score_color = "#10b981" if row['Buffett Score'] >= 70 else "#f59e0b" if row['Buffett Score'] >= 50 else "#ef4444"
                 st.markdown(f"""
-                <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 1rem; border-radius: 0.75rem; text-align: center; border: 2px solid {score_color}30;">
-                    <h3 style="color: #3b82f6; margin: 0;">{row['Ticker']}</h3>
-                    <p style="color: #cbd5e1; font-size: 0.875rem; margin: 0.25rem 0;">{row['Company']}</p>
-                    <div style="font-size: 2rem; font-weight: bold; color: {score_color}; margin: 0.5rem 0;">{row['Buffett Score']}</div>
+                <div class="top-pick-card">
+                    <h3 style="color: #3b82f6;">{row['Ticker']}</h3>
+                    <p style="color: #cbd5e1; font-size: 0.875rem;">{row['Company']}</p>
+                    <div style="font-size: 2rem; font-weight: bold; color: {score_color};">{row['Buffett Score']}</div>
                     <div style="font-size: 0.75rem; color: #94a3b8;">Buffett Score</div>
-                    <hr style="margin: 0.5rem 0;">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.7rem; text-align: left;">
-                        <div>🏢 {row['Sector'][:12]}</div>
-                        <div>📊 ROE: {row['ROE']}</div>
-                        <div>💎 P/B: {row['P/B']}</div>
-                        <div>🏦 D/E: {row['D/E']}</div>
+                    <hr>
+                    <div style="font-size: 0.75rem; text-align: left;">
+                        <div>ROE: {row['ROE']}</div>
+                        <div>P/B: {row['P/B']}</div>
+                        <div>D/E: {row['D/E']}</div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
         
+        if len(top_picks) > 3:
+            st.markdown("<br>", unsafe_allow_html=True)
+            pick_cols_2 = st.columns(2)
+            for idx in range(2):
+                if 3 + idx < len(top_picks):
+                    row = top_picks.iloc[3 + idx]
+                    with pick_cols_2[idx]:
+                        score_color = "#10b981" if row['Buffett Score'] >= 70 else "#f59e0b" if row['Buffett Score'] >= 50 else "#ef4444"
+                        st.markdown(f"""
+                        <div class="top-pick-card">
+                            <h3 style="color: #3b82f6;">{row['Ticker']}</h3>
+                            <p style="color: #cbd5e1; font-size: 0.875rem;">{row['Company']}</p>
+                            <div style="font-size: 2rem; font-weight: bold; color: {score_color};">{row['Buffett Score']}</div>
+                            <div style="font-size: 0.75rem; color: #94a3b8;">Buffett Score</div>
+                            <hr>
+                            <div style="font-size: 0.75rem; text-align: left;">
+                                <div>ROE: {row['ROE']}</div>
+                                <div>P/B: {row['P/B']}</div>
+                                <div>D/E: {row['D/E']}</div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+        
         # Full table
-        st.markdown("### 📊 Complete Analysis for this Index")
-        st.dataframe(
-            df_opp,
-            use_container_width=True,
-            column_config={
-                "Buffett Score": st.column_config.ProgressColumn(
-                    "Buffett Score",
-                    help="Score based on Buffett's criteria (0-100)",
-                    format="%d",
-                    min_value=0,
-                    max_value=100,
-                ),
-                "Ticker": st.column_config.TextColumn("Symbol"),
-                "Company": st.column_config.TextColumn("Company Name"),
-                "Sector": st.column_config.TextColumn("Sector"),
-                "ROE": st.column_config.TextColumn("ROE"),
-                "P/B": st.column_config.TextColumn("P/B Ratio"),
-                "D/E": st.column_config.TextColumn("D/E Ratio"),
-                "Revenue Growth": st.column_config.TextColumn("Revenue Growth"),
-            },
-            hide_index=True,
-            height=400
-        )
+        st.markdown("### 📊 Complete Analysis")
+        st.dataframe(df_opp, use_container_width=True, hide_index=True)
         
         # Download button
         csv = df_opp.to_csv(index=False)
-        st.download_button(
-            label="📥 Download Analysis as CSV",
-            data=csv,
-            file_name=f"{index_name.replace(' ', '_')}_buffett_opportunities.csv",
-            mime="text/csv",
-        )
-    else:
-        st.warning(f"No Buffett-style opportunities found in {index_name} currently. Try another index!")
+        st.download_button("📥 Download CSV", csv, f"{index_name.replace(' ', '_')}_opportunities.csv", "text/csv")
     
-    # Portfolio Section
+    # Watchlist Section
     st.markdown("---")
     st.markdown("## 💼 My Watchlist")
     
@@ -558,113 +518,78 @@ def main():
     # Add to watchlist
     col_add1, col_add2 = st.columns([3, 1])
     with col_add1:
-        new_ticker = st.text_input("Add ticker to watchlist", placeholder="Enter ticker (e.g., JPM)", key="watchlist_add")
+        new_ticker = st.text_input("Add ticker", placeholder="Enter ticker (e.g., JPM)")
     with col_add2:
         st.write("")
-        st.write("")
-        if st.button("➕ Add to Watchlist", use_container_width=True):
+        if st.button("➕ Add"):
             if new_ticker and new_ticker.upper() not in st.session_state.watchlist:
                 st.session_state.watchlist.append(new_ticker.upper())
                 st.rerun()
     
     # Display watchlist
     if st.session_state.watchlist:
-        watchlist_data = []
         for ticker in st.session_state.watchlist:
+            col1, col2, col3 = st.columns([2, 2, 1])
             fund_data = fetch_stock_fundamentals(ticker)
             if fund_data:
-                watchlist_data.append({
-                    "Ticker": ticker,
-                    "Company": fund_data["name"][:25],
-                    "Score": fund_data["score"],
-                    "ROE": f"{fund_data['roe']*100:.1f}%" if fund_data['roe'] else "N/A",
-                    "P/B": f"{fund_data['pb']:.2f}" if fund_data['pb'] else "N/A",
-                })
-        
-        if watchlist_data:
-            df_watchlist = pd.DataFrame(watchlist_data).sort_values("Score", ascending=False)
+                col1.write(f"**{ticker}**")
+                col2.write(f"{fund_data['name'][:30]}")
+                col3.write(f"Score: {fund_data['score']}")
+            else:
+                col1.write(f"**{ticker}**")
+                col2.write("Data unavailable")
+                col3.write("N/A")
             
-            # Display as cards
-            w_cols = st.columns(min(4, len(df_watchlist)))
-            for idx, (_, row) in enumerate(df_watchlist.head(8).iterrows()):
-                with w_cols[idx % 4]:
-                    score_color = "#10b981" if row["Score"] >= 70 else "#f59e0b" if row["Score"] >= 50 else "#ef4444"
-                    st.markdown(f"""
-                    <div class="portfolio-item" style="flex-direction: column; align-items: stretch;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <strong style="font-size: 1.1rem;">{row['Ticker']}</strong>
-                            <span style="background: {score_color}; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold;">{row['Score']}</span>
-                        </div>
-                        <div style="font-size: 0.75rem; color: #94a3b8; margin: 0.25rem 0;">{row['Company']}</div>
-                        <div style="display: flex; gap: 0.5rem; font-size: 0.7rem; margin-top: 0.25rem;">
-                            <span>ROE: {row['ROE']}</span>
-                            <span>P/B: {row['P/B']}</span>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    if st.button(f"🗑️ Remove", key=f"remove_watch_{row['Ticker']}", help=f"Remove {row['Ticker']}"):
-                        st.session_state.watchlist.remove(row['Ticker'])
-                        st.rerun()
+            if st.button(f"Remove {ticker}", key=f"remove_{ticker}"):
+                st.session_state.watchlist.remove(ticker)
+                st.rerun()
     
     # Stock Detail Section
     st.markdown("---")
     st.markdown("## 🔍 Stock Deep Dive")
     
-    # Create combined list of watchlist and top opportunities
     all_tickers = list(set(st.session_state.watchlist + [opp["Ticker"] for opp in opportunities[:5]]))
-    
-    selected_stock = st.selectbox("Select a stock for detailed analysis", 
-                                   options=all_tickers if all_tickers else ["AAPL", "MSFT", "GOOGL"],
-                                   key="stock_detail")
+    selected_stock = st.selectbox("Select a stock", all_tickers if all_tickers else ["AAPL"])
     
     if selected_stock:
-        with st.spinner(f"Loading {selected_stock} details..."):
+        with st.spinner(f"Loading {selected_stock}..."):
             fund_data = fetch_stock_fundamentals(selected_stock)
-            news = fetch_news(selected_stock, max_news=6)
+            news = fetch_news(selected_stock)
             
             if fund_data:
                 col1, col2 = st.columns([1, 2])
                 
                 with col1:
                     display_score_circle(fund_data["score"], "Buffett Score")
-                    st.markdown("---")
-                    st.markdown("**Key Metrics**")
-                    st.metric("Return on Equity (ROE)", f"{fund_data['roe']*100:.1f}%" if fund_data['roe'] else "N/A")
-                    st.metric("Price to Book (P/B)", f"{fund_data['pb']:.2f}" if fund_data['pb'] else "N/A")
-                    st.metric("P/E Ratio", f"{fund_data['pe']:.1f}" if fund_data['pe'] else "N/A")
-                    st.metric("Debt to Equity", f"{fund_data['debt_eq']:.0f}%" if fund_data['debt_eq'] else "N/A")
-                    st.metric("Revenue Growth", f"{fund_data['rev_growth']*100:.1f}%" if fund_data['rev_growth'] else "N/A")
+                    st.metric("ROE", f"{fund_data['roe']*100:.1f}%" if fund_data['roe'] else "N/A")
+                    st.metric("P/B", f"{fund_data['pb']:.2f}" if fund_data['pb'] else "N/A")
+                    st.metric("D/E", f"{fund_data['debt_eq']:.0f}%" if fund_data['debt_eq'] else "N/A")
                 
                 with col2:
                     st.markdown(f"### {fund_data['name']}")
-                    st.markdown(f"**Sector:** {fund_data['sector']} | **Industry:** {fund_data['industry']}")
-                    
-                    # Score breakdown
-                    st.markdown("#### Score Breakdown")
-                    breakdown_cols = st.columns(4)
-                    with breakdown_cols[0]:
-                        profit_score = min(40, fund_data["score"])
-                        st.progress(profit_score / 40, text=f"Profitability: {profit_score}/40")
-                    with breakdown_cols[1]:
-                        val_score = max(0, min(30, fund_data["score"] - 40 if fund_data["score"] > 40 else fund_data["score"]))
-                        st.progress(val_score / 30 if val_score > 0 else 0, text=f"Valuation: {val_score}/30")
-                    with breakdown_cols[2]:
-                        debt_score = max(0, min(20, fund_data["score"] - 70 if fund_data["score"] > 70 else 0))
-                        st.progress(debt_score / 20 if debt_score > 0 else 0, text=f"Debt: {debt_score}/20")
-                    with breakdown_cols[3]:
-                        growth_score = max(0, min(10, fund_data["score"] - 90 if fund_data["score"] > 90 else 0))
-                        st.progress(growth_score / 10 if growth_score > 0 else 0, text=f"Growth: {growth_score}/10")
+                    st.markdown(f"**Sector:** {fund_data['sector']}")
                     
                     # Recommendation
-                    st.markdown("---")
                     if fund_data["score"] >= 70:
-                        st.success("**✅ STRONG BUY** - Meets most of Buffett's criteria. Excellent fundamentals with strong value characteristics.")
+                        st.success("✅ **STRONG BUY** - Meets most of Buffett's criteria")
                     elif fund_data["score"] >= 50:
-                        st.info("**📊 ACCUMULATE** - Good fundamentals but some areas need improvement. Consider dollar-cost averaging.")
+                        st.info("📊 **ACCUMULATE** - Good fundamentals")
                     elif fund_data["score"] >= 30:
-                        st.warning("**⚠️ HOLD** - Mixed signals, consider waiting for better entry point or improved fundamentals.")
+                        st.warning("⚠️ **HOLD** - Mixed signals")
                     else:
-                        st.error("**❌ AVOID** - Does not meet Buffett's investment criteria. Look for better opportunities.")
+                        st.error("❌ **AVOID** - Does not meet Buffett's criteria")
                 
                 # News section
+                st.markdown("---")
+                st.markdown("### 📰 Latest News")
+                for article in news[:3]:
+                    st.markdown(f"**📌 {article['title'][:80]}**")
+                    st.caption(f"{article['summary'][:100]}...")
+                    st.markdown("---")
+    
+    # Footer
+    st.markdown("---")
+    st.markdown("📊 Data: Yahoo Finance | Built with Buffett's principles")
+
+if __name__ == "__main__":
+    main()
