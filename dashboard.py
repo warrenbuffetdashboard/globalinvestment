@@ -69,21 +69,6 @@ st.markdown("""
         text-align: center;
     }
     
-    /* Index card */
-    .index-card {
-        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-        padding: 1rem;
-        border-radius: 0.75rem;
-        text-align: center;
-        border-left: 4px solid #3b82f6;
-        cursor: pointer;
-        transition: all 0.3s;
-    }
-    .index-card:hover {
-        background: linear-gradient(135deg, #334155 0%, #1e293b 100%);
-        transform: scale(1.02);
-    }
-    
     /* Top pick card */
     .top-pick-card {
         background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
@@ -156,18 +141,6 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(59,130,246,0.3);
     }
     
-    /* Portfolio item */
-    .portfolio-item {
-        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-        padding: 0.75rem;
-        border-radius: 0.5rem;
-        margin-bottom: 0.5rem;
-        border: 1px solid #334155;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-    
     /* Hide default streamlit elements */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -184,9 +157,6 @@ st.markdown("""
     ::-webkit-scrollbar-thumb {
         background: #3b82f6;
         border-radius: 4px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-        background: #2563eb;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -220,8 +190,7 @@ POSITIVE_WORDS = {
 NEGATIVE_WORDS = {
     'drop', 'fall', 'decline', 'loss', 'miss', 'downgrade', 'sell', 'bearish', 'negative',
     'weak', 'low', 'decrease', 'falling', 'risk', 'warning', 'lawsuit', 'investigation',
-    'fraud', 'scandal', 'bankrupt', 'default', 'crisis', 'uncertainty', 'volatility',
-    'underperform', 'disappoint', 'regulatory', 'fine', 'penalty'
+    'fraud', 'scandal', 'bankrupt', 'default', 'crisis', 'uncertainty', 'volatility'
 }
 
 def analyze_sentiment(text):
@@ -256,7 +225,6 @@ def analyze_news_sentiment(news_articles):
         sentiment, score = analyze_sentiment(text)
         sentiments.append(sentiment)
     
-    # Calculate overall sentiment distribution
     sentiment_counts = Counter(sentiments)
     total = len(sentiments)
     
@@ -267,7 +235,6 @@ def analyze_news_sentiment(news_articles):
     else:
         positive_pct = negative_pct = neutral_pct = 0
     
-    # Calculate overall sentiment score
     sentiment_scores = []
     for article in news_articles:
         text = f"{article.get('title', '')} {article.get('summary', '')}"
@@ -276,7 +243,6 @@ def analyze_news_sentiment(news_articles):
     
     overall_score = sum(sentiment_scores) / len(sentiment_scores) if sentiment_scores else 0.5
     
-    # Determine sentiment label
     if overall_score >= 0.6:
         overall_label = "Positive"
         overall_color = "#10b981"
@@ -301,44 +267,30 @@ def analyze_news_sentiment(news_articles):
         'sentiments': sentiments
     }
 
-# Dynamic index constituents based on real data
 def get_index_constituents(ticker):
     """Get top constituents for any index dynamically"""
-    
-    # For major indices, use predefined lists
     predefined = {
         "^GSPC": ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK-B", "JPM", "V", 
                   "UNH", "WMT", "JNJ", "PG", "HD", "MA", "BAC", "CVX", "XOM", "ABBV"],
-        "^IXIC": ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AVGO", "COST", "NFLX",
-                  "ADBE", "PEP", "CSCO", "CMCSA", "INTC", "AMGN", "TXN", "QCOM", "INTU", "HON"],
-        "^DJI": ["AAPL", "MSFT", "UNH", "GS", "HD", "CAT", "DIS", "V", "JPM", "CRM",
-                 "CVX", "WMT", "KO", "PG", "JNJ", "TRV", "HON", "NKE", "BA", "IBM"],
-        "^NSEI": ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS", 
-                  "ITC.NS", "KOTAKBANK.NS", "SBIN.NS", "BHARTIARTL.NS", "HCLTECH.NS"],
-        "^HSI": ["0700.HK", "9988.HK", "0941.HK", "1299.HK", "0939.HK", "2318.HK", "3988.HK", 
-                 "1810.HK", "0388.HK", "2628.HK"],
-        "^N225": ["7203.T", "9984.T", "6758.T", "9432.T", "8316.T", "4502.T", "4063.T", 
-                  "6861.T", "6098.T", "8035.T"],
-        "^FCHI": ["OR.PA", "MC.PA", "TTE.PA", "SAN.PA", "BNP.PA", "AIR.PA", "SU.PA", "CS.PA", "RMS.PA", "STLA.PA"],
-        "^GDAXI": ["SAP.DE", "DTE.DE", "MBG.DE", "VOW3.DE", "ALV.DE", "ADS.DE", "DBK.DE", "BMW.DE", "LIN.DE", "IFX.DE"],
-        "^STOXX50E": ["ASML.AS", "SAP.DE", "TTE.PA", "SAN.PA", "LIN.DE", "OR.PA", "MC.PA", "AIR.PA", "ALV.DE", "SU.PA"],
-        "^FTSE": ["SHEL.L", "HSBA.L", "AZN.L", "ULVR.L", "BP.L", "GSK.L", "DGE.L", "RIO.L", "BARC.L", "LLOY.L"],
-        "000001.SS": ["600519.SS", "601318.SS", "600036.SS", "000858.SZ", "601166.SS", "600276.SS", "002415.SZ", "601888.SS", "300750.SZ", "000333.SZ"],
-        "^BVSP": ["PETR4.SA", "VALE3.SA", "ITUB4.SA", "BBDC4.SA", "ABEV3.SA", "BBAS3.SA", "ELET3.SA", "WEGE3.SA", "GGBR4.SA", "SUZB3.SA"]
+        "^IXIC": ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "AVGO", "COST", "NFLX"],
+        "^DJI": ["AAPL", "MSFT", "UNH", "GS", "HD", "CAT", "DIS", "V", "JPM", "CRM"],
+        "^NSEI": ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS"],
+        "^HSI": ["0700.HK", "9988.HK", "0941.HK", "1299.HK", "0939.HK", "2318.HK"],
+        "^N225": ["7203.T", "9984.T", "6758.T", "9432.T", "8316.T", "4502.T"],
+        "^FCHI": ["OR.PA", "MC.PA", "TTE.PA", "SAN.PA", "BNP.PA", "AIR.PA"],
+        "^GDAXI": ["SAP.DE", "DTE.DE", "MBG.DE", "VOW3.DE", "ALV.DE", "ADS.DE"],
+        "^FTSE": ["SHEL.L", "HSBA.L", "AZN.L", "ULVR.L", "BP.L", "GSK.L"],
     }
     
     if ticker in predefined:
         return predefined[ticker]
-    
-    # Default fallback - S&P 500 constituents
-    return ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "JPM", "V", "UNH"]
+    return ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META"]
 
 # ============================================
 # DATA FETCHING FUNCTIONS
 # ============================================
 @st.cache_data(ttl=300)
 def fetch_index_data(ticker, period="1mo"):
-    """Fetch index data with caching."""
     try:
         stock = yf.Ticker(ticker)
         hist = stock.history(period=period)
@@ -350,19 +302,15 @@ def fetch_index_data(ticker, period="1mo"):
 
 @st.cache_data(ttl=3600)
 def fetch_stock_fundamentals(ticker):
-    """Fetch stock fundamentals for Buffett scoring."""
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
         
-        # Extract key metrics
         roe = info.get("returnOnEquity") or info.get("roe")
         pb = info.get("priceToBook")
-        pe = info.get("trailingPE")
         debt_eq = info.get("debtToEquity") or info.get("totalDebtToEquity")
         rev_growth = info.get("revenueGrowth")
         
-        # Calculate Buffett score (0-100)
         score = 0
         if roe and roe > 0.15:
             score += 40
@@ -388,7 +336,6 @@ def fetch_stock_fundamentals(ticker):
             "score": score,
             "roe": roe,
             "pb": pb,
-            "pe": pe,
             "debt_eq": debt_eq,
             "rev_growth": rev_growth,
             "name": info.get("longName", ticker),
@@ -399,10 +346,8 @@ def fetch_stock_fundamentals(ticker):
 
 @st.cache_data(ttl=1800)
 def fetch_news(ticker, max_news=10):
-    """Fetch news for a ticker."""
     news_list = []
     try:
-        # Try Finnhub
         url = f"https://finnhub.io/api/v1/news?symbol={ticker}&token=demo"
         response = requests.get(url, timeout=8)
         if response.status_code == 200:
@@ -419,23 +364,16 @@ def fetch_news(ticker, max_news=10):
         pass
     
     if not news_list:
-        # Return sample news
         news_list = [
-            {"title": f"{ticker} reports strong quarterly earnings, beating estimates", 
-             "summary": "The company exceeded analyst expectations with robust revenue growth and improved margins.",
+            {"title": f"{ticker} reports strong quarterly earnings", 
+             "summary": "The company exceeded analyst expectations.",
              "source": "Market Insights", "datetime": time.time(), "url": "#"},
-            {"title": f"Analysts upgrade {ticker} citing strong fundamentals", 
-             "summary": "Multiple financial institutions raise price targets following positive developments.",
+            {"title": f"Analysts positive on {ticker} outlook", 
+             "summary": "Multiple institutions raise price targets.",
              "source": "Financial Times", "datetime": time.time(), "url": "#"},
-            {"title": f"{ticker} announces strategic expansion plans", 
-             "summary": "The company reveals new initiatives to capture market share and drive future growth.",
+            {"title": f"{ticker} announces expansion plans", 
+             "summary": "New initiatives to drive future growth.",
              "source": "Bloomberg", "datetime": time.time(), "url": "#"},
-            {"title": f"Market volatility affects {ticker} trading", 
-             "summary": "Broader market movements create short-term pressure on the stock.",
-             "source": "Reuters", "datetime": time.time(), "url": "#"},
-            {"title": f"Institutional investors increase {ticker} holdings", 
-             "summary": "Major funds show confidence by adding to their positions.",
-             "source": "WSJ", "datetime": time.time(), "url": "#"},
         ]
     return news_list
 
@@ -443,20 +381,17 @@ def fetch_news(ticker, max_news=10):
 # UI COMPONENTS
 # ============================================
 def display_metric_card(title, value, change=None, color="#3b82f6"):
-    """Display a styled metric card."""
     delta_html = f"<small style='color: #10b981;'>▲ {change:.1f}%</small>" if change and change > 0 else \
                  f"<small style='color: #ef4444;'>▼ {abs(change):.1f}%</small>" if change else ""
-    
     st.markdown(f"""
     <div class="metric-card">
-        <div style="font-size: 0.875rem; color: #94a3b8; margin-bottom: 0.5rem;">{title}</div>
+        <div style="font-size: 0.875rem; color: #94a3b8;">{title}</div>
         <div style="font-size: 1.75rem; font-weight: bold; color: {color};">{value}</div>
         {delta_html}
     </div>
     """, unsafe_allow_html=True)
 
 def display_score_circle(score, title):
-    """Display a circular score indicator."""
     color = "#10b981" if score >= 70 else "#f59e0b" if score >= 50 else "#ef4444"
     st.markdown(f"""
     <div style="text-align: center;">
@@ -465,259 +400,122 @@ def display_score_circle(score, title):
                 <span style="font-size: 2rem; font-weight: bold; color: {color};">{score}</span>
             </div>
         </div>
-        <div style="margin-top: 0.5rem; font-size: 0.875rem; color: #94a3b8;">{title}</div>
+        <div style="margin-top: 0.5rem; color: #94a3b8;">{title}</div>
     </div>
     """, unsafe_allow_html=True)
 
 def display_sentiment_gauge(sentiment_data):
-    """Display sentiment gauge chart similar to watchlist display."""
     fig = go.Figure()
-    
-    # Add gauge chart
     fig.add_trace(go.Indicator(
         mode="gauge+number+delta",
         value=sentiment_data['overall_score'] * 100,
-        title={"text": f"{sentiment_data['overall_icon']} Overall Sentiment", "font": {"size": 16}},
-        delta={"reference": 50, "increasing": {"color": "green"}, "decreasing": {"color": "red"}},
+        title={"text": f"{sentiment_data['overall_icon']} Overall Sentiment", "font": {"size": 14}},
+        delta={"reference": 50},
         gauge={
-            "axis": {"range": [0, 100], "tickwidth": 1, "tickcolor": "white"},
-            "bar": {"color": sentiment_data['overall_color'], "thickness": 0.5},
+            "axis": {"range": [0, 100]},
+            "bar": {"color": sentiment_data['overall_color']},
             "bgcolor": "#1e293b",
-            "borderwidth": 2,
-            "bordercolor": "#334155",
             "steps": [
-                {"range": [0, 33], "color": "#f44336", "name": "Negative"},
-                {"range": [33, 66], "color": "#ffc107", "name": "Neutral"},
-                {"range": [66, 100], "color": "#4caf50", "name": "Positive"}
-            ],
-            "threshold": {
-                "line": {"color": "white", "width": 4},
-                "thickness": 0.75,
-                "value": sentiment_data['overall_score'] * 100
-            }
+                {"range": [0, 33], "color": "#f44336"},
+                {"range": [33, 66], "color": "#ffc107"},
+                {"range": [66, 100], "color": "#4caf50"}
+            ]
         }
     ))
-    
-    fig.update_layout(
-        height=300,
-        margin=dict(l=20, r=20, t=50, b=20),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font={"color": "white"}
-    )
-    
+    fig.update_layout(height=250, margin=dict(l=20, r=20, t=50, b=20))
     st.plotly_chart(fig, use_container_width=True)
 
 def display_sentiment_distribution(sentiment_data):
-    """Display sentiment distribution pie chart."""
     fig = go.Figure(data=[go.Pie(
         labels=['Positive', 'Neutral', 'Negative'],
         values=[sentiment_data['positive_pct'], sentiment_data['neutral_pct'], sentiment_data['negative_pct']],
         marker=dict(colors=['#10b981', '#f59e0b', '#ef4444']),
         hole=0.4,
-        textinfo='label+percent',
-        textposition='auto',
-        hoverinfo='label+percent+value'
+        textinfo='label+percent'
     )])
-    
-    fig.update_layout(
-        title="Sentiment Distribution",
-        height=300,
-        margin=dict(l=20, r=20, t=50, b=20),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font={"color": "white"}
-    )
-    
+    fig.update_layout(height=250, margin=dict(l=20, r=20, t=50, b=20))
     st.plotly_chart(fig, use_container_width=True)
 
 # ============================================
 # MAIN APP
 # ============================================
 def main():
-    # Header
     st.markdown("""
     <div class="main-header">
         <h1 style="color: white; margin: 0;">🌍 Global Buffett Screener</h1>
-        <p style="color: #cbd5e1; margin: 0.5rem 0 0 0;">Value investing powered by Warren Buffett's principles</p>
+        <p style="color: #cbd5e1;">Value investing powered by Warren Buffett's principles</p>
     </div>
     """, unsafe_allow_html=True)
     
-    # Sidebar
     with st.sidebar:
-        st.markdown("### 🎯 Investment Philosophy")
-        st.info("""
-        **Buffett's Criteria:**
-        - 📈 ROE > 15% (Profitability)
-        - 💎 P/B < 1.5 (Value)
-        - 🏦 Debt/Equity < 50% (Safety)
-        - 📊 Revenue Growth > 10% (Growth)
-        """)
-        
-        st.markdown("---")
-        st.markdown("### ℹ️ About")
-        st.caption("Scores range from 0-100, with higher scores indicating better alignment with Buffett's criteria.")
+        st.markdown("### 🎯 Buffett's Criteria")
+        st.info("📈 ROE > 15%\n💎 P/B < 1.5\n🏦 Debt/Equity < 50%\n📊 Revenue Growth > 10%")
     
-    # Main content - Index Selection
     st.markdown("## 🌟 Global Market Overview")
-    st.markdown("Select an index to explore its top Buffett-style opportunities")
-    
-    # Display indices as clickable cards
     cols = st.columns(4)
     for idx, (name, info) in enumerate(MAJOR_INDICES.items()):
         with cols[idx % 4]:
-            if st.button(f"{name}\n{info['market']}", key=f"index_{idx}", use_container_width=True):
+            if st.button(f"{name}", key=f"index_{idx}", use_container_width=True):
                 st.session_state.selected_index = info["ticker"]
                 st.session_state.selected_index_name = name
                 st.rerun()
     
-    # Default selected index
     if "selected_index" not in st.session_state:
         st.session_state.selected_index = "^GSPC"
         st.session_state.selected_index_name = "🇺🇸 S&P 500"
     
     st.markdown("---")
     
-    # Fetch and display selected index data
     index_ticker = st.session_state.selected_index
     index_name = st.session_state.selected_index_name
-    index_info = MAJOR_INDICES.get(index_name, {"region": "Global", "market": "Global Markets"})
     
-    with st.spinner(f"Loading {index_name} data..."):
-        hist = fetch_index_data(index_ticker, period="1mo")
-        
+    with st.spinner(f"Loading {index_name}..."):
+        hist = fetch_index_data(index_ticker)
         if not hist.empty:
-            st.markdown(f"## 📈 {index_name} Performance")
+            current = hist["Close"].iloc[-1]
+            prev = hist["Close"].iloc[-2] if len(hist) > 1 else current
+            change = ((current - prev) / prev) * 100
             
-            current_price = hist["Close"].iloc[-1]
-            prev_close = hist["Close"].iloc[-2] if len(hist) > 1 else current_price
-            daily_change = ((current_price - prev_close) / prev_close) * 100
+            col1, col2 = st.columns(2)
+            with col1:
+                display_metric_card("Current Level", f"{current:,.0f}", change)
+            with col2:
+                display_metric_card("Daily Change", f"{change:+.2f}%")
             
-            metric_cols = st.columns(4)
-            with metric_cols[0]:
-                display_metric_card("Current Level", f"{current_price:,.0f}", daily_change)
-            with metric_cols[1]:
-                display_metric_card("Daily Change", f"{daily_change:+.2f}%")
-            
-            # Index chart
             fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=hist.index, y=hist["Close"],
-                mode="lines",
-                name=index_name,
-                line=dict(color="#3b82f6", width=2),
-                fill="tozeroy",
-                fillcolor="rgba(59,130,246,0.1)"
-            ))
-            fig.update_layout(
-                title=f"{index_name} - 30 Day Performance",
-                template="plotly_dark",
-                height=400,
-                margin=dict(l=0, r=0, t=40, b=0)
-            )
+            fig.add_trace(go.Scatter(x=hist.index, y=hist["Close"], mode="lines", line=dict(color="#3b82f6", width=2), fill="tozeroy"))
+            fig.update_layout(template="plotly_dark", height=350, margin=dict(l=0, r=0, t=30, b=0))
             st.plotly_chart(fig, use_container_width=True)
     
-    # Buffett Opportunities section
-    st.markdown("---")
-    st.markdown(f"## 🎯 Top Buffett Opportunities in {index_name}")
-    
-    # Get constituent stocks
+    st.markdown(f"## 🎯 Top Opportunities in {index_name}")
     constituents = get_index_constituents(index_ticker)
     
-    # Analyze constituents
     opportunities = []
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    for i, ticker in enumerate(constituents[:15]):  # Limit to 15 for performance
-        status_text.text(f"Analyzing {ticker}...")
+    for ticker in constituents[:10]:
         fund_data = fetch_stock_fundamentals(ticker)
         if fund_data and fund_data["score"] > 0:
             opportunities.append({
                 "Ticker": ticker,
-                "Company": fund_data["name"][:30],
+                "Company": fund_data["name"][:25],
                 "Sector": fund_data["sector"],
-                "Buffett Score": fund_data["score"],
+                "Score": fund_data["score"],
                 "ROE": f"{fund_data['roe']*100:.1f}%" if fund_data['roe'] else "N/A",
                 "P/B": f"{fund_data['pb']:.2f}" if fund_data['pb'] else "N/A",
-                "D/E": f"{fund_data['debt_eq']:.0f}%" if fund_data['debt_eq'] else "N/A",
             })
-        progress_bar.progress((i + 1) / len(constituents[:15]))
     
-    progress_bar.empty()
-    status_text.empty()
-    
-    # Sort and display opportunities
     if opportunities:
-        df_opp = pd.DataFrame(opportunities).sort_values("Buffett Score", ascending=False)
-        
-        # Top 5 picks display
-        st.markdown("### 🏆 Top 5 Picks from this Index")
-        top_picks = df_opp.head(5)
-        
-        # Display in 2 rows
-        pick_cols = st.columns(3)
-        for idx in range(min(3, len(top_picks))):
-            row = top_picks.iloc[idx]
-            with pick_cols[idx]:
-                score_color = "#10b981" if row['Buffett Score'] >= 70 else "#f59e0b" if row['Buffett Score'] >= 50 else "#ef4444"
-                st.markdown(f"""
-                <div class="top-pick-card">
-                    <h3 style="color: #3b82f6;">{row['Ticker']}</h3>
-                    <p style="color: #cbd5e1; font-size: 0.875rem;">{row['Company']}</p>
-                    <div style="font-size: 2rem; font-weight: bold; color: {score_color};">{row['Buffett Score']}</div>
-                    <div style="font-size: 0.75rem; color: #94a3b8;">Buffett Score</div>
-                    <hr>
-                    <div style="font-size: 0.75rem; text-align: left;">
-                        <div>ROE: {row['ROE']}</div>
-                        <div>P/B: {row['P/B']}</div>
-                        <div>D/E: {row['D/E']}</div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-        
-        if len(top_picks) > 3:
-            st.markdown("<br>", unsafe_allow_html=True)
-            pick_cols_2 = st.columns(2)
-            for idx in range(2):
-                if 3 + idx < len(top_picks):
-                    row = top_picks.iloc[3 + idx]
-                    with pick_cols_2[idx]:
-                        score_color = "#10b981" if row['Buffett Score'] >= 70 else "#f59e0b" if row['Buffett Score'] >= 50 else "#ef4444"
-                        st.markdown(f"""
-                        <div class="top-pick-card">
-                            <h3 style="color: #3b82f6;">{row['Ticker']}</h3>
-                            <p style="color: #cbd5e1; font-size: 0.875rem;">{row['Company']}</p>
-                            <div style="font-size: 2rem; font-weight: bold; color: {score_color};">{row['Buffett Score']}</div>
-                            <div style="font-size: 0.75rem; color: #94a3b8;">Buffett Score</div>
-                            <hr>
-                            <div style="font-size: 0.75rem; text-align: left;">
-                                <div>ROE: {row['ROE']}</div>
-                                <div>P/B: {row['P/B']}</div>
-                                <div>D/E: {row['D/E']}</div>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-        
-        # Full table
-        st.markdown("### 📊 Complete Analysis")
-        st.dataframe(df_opp, use_container_width=True, hide_index=True)
-        
-        # Download button
-        csv = df_opp.to_csv(index=False)
-        st.download_button("📥 Download CSV", csv, f"{index_name.replace(' ', '_')}_opportunities.csv", "text/csv")
+        df_opp = pd.DataFrame(opportunities).sort_values("Score", ascending=False)
+        st.dataframe(df_opp.head(10), use_container_width=True, hide_index=True)
     
-    # Watchlist Section
     st.markdown("---")
     st.markdown("## 💼 My Watchlist")
     
     if "watchlist" not in st.session_state:
-        st.session_state.watchlist = ["AAPL", "MSFT", "GOOGL", "BRK-B"]
+        st.session_state.watchlist = ["AAPL", "MSFT", "GOOGL"]
     
-    # Add to watchlist
     col_add1, col_add2 = st.columns([3, 1])
     with col_add1:
-        new_ticker = st.text_input("Add ticker", placeholder="Enter ticker (e.g., JPM)")
+        new_ticker = st.text_input("Add ticker")
     with col_add2:
         st.write("")
         if st.button("➕ Add"):
@@ -725,14 +523,106 @@ def main():
                 st.session_state.watchlist.append(new_ticker.upper())
                 st.rerun()
     
-    # Display watchlist
-    if st.session_state.watchlist:
-        for ticker in st.session_state.watchlist:
-            col1, col2, col3 = st.columns([2, 2, 1])
-            fund_data = fetch_stock_fundamentals(ticker)
+    for ticker in st.session_state.watchlist:
+        col1, col2, col3 = st.columns([2, 2, 1])
+        fund_data = fetch_stock_fundamentals(ticker)
+        if fund_data:
+            col1.write(f"**{ticker}**")
+            col2.write(fund_data["name"][:30])
+            col3.write(f"Score: {fund_data['score']}")
+        else:
+            col1.write(f"**{ticker}**")
+            col2.write("Data unavailable")
+            col3.write("N/A")
+        
+        if st.button(f"Remove", key=f"remove_{ticker}"):
+            st.session_state.watchlist.remove(ticker)
+            st.rerun()
+    
+    st.markdown("---")
+    st.markdown("## 🔍 Stock Deep Dive")
+    
+    all_tickers = list(set(st.session_state.watchlist + [opp["Ticker"] for opp in opportunities[:5]]))
+    selected = st.selectbox("Select a stock", all_tickers if all_tickers else ["AAPL"])
+    
+    if selected:
+        with st.spinner(f"Loading {selected}..."):
+            fund_data = fetch_stock_fundamentals(selected)
+            news = fetch_news(selected)
+            sentiment_data = analyze_news_sentiment(news)
+            
             if fund_data:
-                col1.write(f"**{ticker}**")
-                col2.write(f"{fund_data['name'][:30]}")
-                col3.write(f"Score: {fund_data['score']}")
-            else:
-               
+                col1, col2 = st.columns([1, 2])
+                with col1:
+                    display_score_circle(fund_data["score"], "Buffett Score")
+                    st.metric("ROE", f"{fund_data['roe']*100:.1f}%" if fund_data['roe'] else "N/A")
+                    st.metric("P/B", f"{fund_data['pb']:.2f}" if fund_data['pb'] else "N/A")
+                
+                with col2:
+                    st.markdown(f"### {fund_data['name']}")
+                    st.markdown(f"**Sector:** {fund_data['sector']}")
+                    if fund_data["score"] >= 70:
+                        st.success("✅ STRONG BUY - Meets Buffett's criteria")
+                    elif fund_data["score"] >= 50:
+                        st.info("📊 ACCUMULATE - Good fundamentals")
+                    else:
+                        st.warning("⚠️ HOLD - Mixed signals")
+                
+                # News with Sentiment
+                st.markdown("---")
+                st.markdown("### 📰 Latest News & Sentiment Analysis")
+                
+                # Sentiment charts
+                sent_col1, sent_col2 = st.columns(2)
+                with sent_col1:
+                    display_sentiment_gauge(sentiment_data)
+                with sent_col2:
+                    display_sentiment_distribution(sentiment_data)
+                
+                # Display news with sentiment badges
+                st.markdown("#### News Articles")
+                for article in news[:8]:
+                    title = article.get('title', '')
+                    summary = article.get('summary', '')
+                    source = article.get('source', 'Unknown')
+                    
+                    # Analyze individual article sentiment
+                    sentiment, score = analyze_sentiment(f"{title} {summary}")
+                    
+                    if sentiment == "positive":
+                        badge = '<span class="sentiment-positive">🟢 Positive</span>'
+                    elif sentiment == "negative":
+                        badge = '<span class="sentiment-negative">🔴 Negative</span>'
+                    else:
+                        badge = '<span class="sentiment-neutral">🟡 Neutral</span>'
+                    
+                    st.markdown(f"""
+                    <div class="news-item">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <strong style="color: #3b82f6;">{title[:100]}</strong>
+                            {badge}
+                        </div>
+                        <div style="font-size: 0.8rem; color: #94a3b8;">{summary[:150]}...</div>
+                        <div style="font-size: 0.7rem; color: #64748b; margin-top: 0.5rem;">Source: {source}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # Sentiment summary
+                st.markdown("---")
+                st.markdown("#### 📊 Sentiment Summary")
+                col_sum1, col_sum2, col_sum3 = st.columns(3)
+                with col_sum1:
+                    st.metric("Positive Articles", f"{int(sentiment_data['positive_pct'] / 100 * len(news))}", 
+                             delta=f"{sentiment_data['positive_pct']:.0f}%")
+                with col_sum2:
+                    st.metric("Neutral Articles", f"{int(sentiment_data['neutral_pct'] / 100 * len(news))}",
+                             delta=f"{sentiment_data['neutral_pct']:.0f}%")
+                with col_sum3:
+                    st.metric("Negative Articles", f"{int(sentiment_data['negative_pct'] / 100 * len(news))}",
+                             delta=f"{sentiment_data['negative_pct']:.0f}%")
+    
+    st.markdown("---")
+    st.caption("📊 Data: Yahoo Finance | News: Finnhub | Sentiment Analysis")
+
+if __name__ == "__main__":
+    main()
