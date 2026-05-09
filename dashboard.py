@@ -170,15 +170,6 @@ st.markdown("""
     .share-telegram { background: #0088cc; color: white; }
     .share-whatsapp { background: #25D366; color: white; }
     
-    /* Share container */
-    .share-container {
-        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-        padding: 1rem;
-        border-radius: 1rem;
-        margin-top: 1rem;
-        border: 1px solid #334155;
-    }
-    
     /* Hide default streamlit elements */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -750,5 +741,12 @@ def main():
                     neg_count = int(sentiment_data['negative_pct'] / 100 * sentiment_data['total_articles']) if sentiment_data['total_articles'] > 0 else 0
                     st.metric("📉 Negative", neg_count, delta=f"{sentiment_data['negative_pct']:.0f}%")
                 
-                # News articles
-                st.markdown("#### 📑 Recent
+                # News articles section
+                st.markdown("#### 📑 Recent News Articles")
+                
+                for idx, article in enumerate(news[:12]):
+                    title = article.get('title', '')
+                    summary = article.get('summary', '')
+                    source = article.get('source', 'Unknown')
+                    
+                    sentiment, _ = analyze_sentiment
