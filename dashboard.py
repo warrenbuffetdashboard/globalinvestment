@@ -28,12 +28,10 @@ st.set_page_config(
 # Custom CSS for better UI
 st.markdown("""
 <style>
-    /* Main container styling */
     .main {
         background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
     }
     
-    /* Card styling */
     .metric-card {
         background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
         padding: 1rem;
@@ -47,7 +45,6 @@ st.markdown("""
         border-color: #3b82f6;
     }
     
-    /* Score circle styling */
     .score-circle {
         width: 120px;
         height: 120px;
@@ -61,7 +58,6 @@ st.markdown("""
         box-shadow: 0 8px 16px rgba(0,0,0,0.2);
     }
     
-    /* Header styling */
     .main-header {
         background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
         padding: 1.5rem;
@@ -70,7 +66,6 @@ st.markdown("""
         text-align: center;
     }
     
-    /* Top pick card */
     .top-pick-card {
         background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
         padding: 1rem;
@@ -84,7 +79,6 @@ st.markdown("""
         box-shadow: 0 8px 25px rgba(0,0,0,0.3);
     }
     
-    /* News item */
     .news-item {
         background: #1e293b;
         padding: 0.75rem;
@@ -98,7 +92,6 @@ st.markdown("""
         transform: translateX(5px);
     }
     
-    /* Sentiment badge */
     .sentiment-positive {
         background: #10b981;
         color: white;
@@ -127,7 +120,6 @@ st.markdown("""
         display: inline-block;
     }
     
-    /* Button styling */
     .stButton > button {
         background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
         color: white;
@@ -142,27 +134,24 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(59,130,246,0.3);
     }
     
-    /* Share button styling */
     .share-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0.4rem 1rem;
+        display: inline-block;
+        padding: 0.4rem 0.8rem;
         margin: 0.2rem;
         border-radius: 0.5rem;
         text-decoration: none;
-        font-size: 0.85rem;
+        font-size: 0.8rem;
         font-weight: 500;
         transition: all 0.2s;
         cursor: pointer;
-        border: none;
-        gap: 0.5rem;
+        text-align: center;
+        width: 100%;
     }
     .share-btn:hover {
         transform: translateY(-2px);
         opacity: 0.9;
     }
-    .share-tiktok { background: #000000; color: white; border: 1px solid #00f2ea; }
+    .share-tiktok { background: #000000; color: white; }
     .share-twitter { background: #1DA1F2; color: white; }
     .share-facebook { background: #4267B2; color: white; }
     .share-linkedin { background: #0077B5; color: white; }
@@ -170,11 +159,9 @@ st.markdown("""
     .share-telegram { background: #0088cc; color: white; }
     .share-whatsapp { background: #25D366; color: white; }
     
-    /* Hide default streamlit elements */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     
-    /* Custom scrollbar */
     ::-webkit-scrollbar {
         width: 8px;
         height: 8px;
@@ -193,78 +180,116 @@ st.markdown("""
 # ============================================
 # SHARE FUNCTIONALITY
 # ============================================
-def create_share_urls(platform, text, url=None):
-    """Create share URLs for different social media platforms."""
+def create_share_url(platform, text, url):
+    """Create share URL for social media platforms."""
     encoded_text = urllib.parse.quote(text)
-    current_url = url or "https://global-buffett-screener.streamlit.app"
-    encoded_url = urllib.parse.quote(current_url)
+    encoded_url = urllib.parse.quote(url)
     
-    share_urls = {
-        "tiktok": f"https://www.tiktok.com/@share?text={encoded_text}&url={encoded_url}",
-        "twitter": f"https://twitter.com/intent/tweet?text={encoded_text}&url={encoded_url}",
-        "facebook": f"https://www.facebook.com/sharer/sharer.php?u={encoded_url}&quote={encoded_text}",
-        "linkedin": f"https://www.linkedin.com/sharing/share-offsite/?url={encoded_url}&title={encoded_text}",
-        "reddit": f"https://reddit.com/submit?url={encoded_url}&title={encoded_text}",
-        "telegram": f"https://t.me/share/url?url={encoded_url}&text={encoded_text}",
-        "whatsapp": f"https://wa.me/?text={encoded_text}%20{encoded_url}"
-    }
-    
-    return share_urls.get(platform, "#")
+    if platform == "twitter":
+        return f"https://twitter.com/intent/tweet?text={encoded_text}&url={encoded_url}"
+    elif platform == "facebook":
+        return f"https://www.facebook.com/sharer/sharer.php?u={encoded_url}&quote={encoded_text}"
+    elif platform == "linkedin":
+        return f"https://www.linkedin.com/sharing/share-offsite/?url={encoded_url}&title={encoded_text}"
+    elif platform == "reddit":
+        return f"https://reddit.com/submit?url={encoded_url}&title={encoded_text}"
+    elif platform == "telegram":
+        return f"https://t.me/share/url?url={encoded_url}&text={encoded_text}"
+    elif platform == "whatsapp":
+        return f"https://wa.me/?text={encoded_text}%20{encoded_url}"
+    elif platform == "tiktok":
+        return f"https://www.tiktok.com/@share?text={encoded_text}&url={encoded_url}"
+    else:
+        return "#"
 
-def display_share_buttons(stock_ticker, stock_name, buffett_score):
-    """Display social media share buttons."""
-    share_text = f"📊 Just analyzed {stock_ticker} ({stock_name}) on Global Buffett Screener! Buffett Score: {buffett_score}/100 - Value investing insights! 🚀"
+def share_on_platform(platform, ticker, name, score):
+    """Create share button for a specific platform."""
+    share_text = f"Just analyzed {ticker} ({name}) on Global Buffett Screener! Buffett Score: {score}/100"
+    app_url = "https://global-buffett-screener.streamlit.app"
+    share_url = create_share_url(platform, share_text, app_url)
     
+    if platform == "tiktok":
+        button_html = f'<a href="{share_url}" target="_blank" class="share-btn share-tiktok">🎵 TikTok</a>'
+    elif platform == "twitter":
+        button_html = f'<a href="{share_url}" target="_blank" class="share-btn share-twitter">🐦 X (Twitter)</a>'
+    elif platform == "facebook":
+        button_html = f'<a href="{share_url}" target="_blank" class="share-btn share-facebook">📘 Facebook</a>'
+    elif platform == "linkedin":
+        button_html = f'<a href="{share_url}" target="_blank" class="share-btn share-linkedin">🔗 LinkedIn</a>'
+    elif platform == "reddit":
+        button_html = f'<a href="{share_url}" target="_blank" class="share-btn share-reddit">🤖 Reddit</a>'
+    elif platform == "telegram":
+        button_html = f'<a href="{share_url}" target="_blank" class="share-btn share-telegram">📨 Telegram</a>'
+    elif platform == "whatsapp":
+        button_html = f'<a href="{share_url}" target="_blank" class="share-btn share-whatsapp">💬 WhatsApp</a>'
+    else:
+        button_html = ""
+    
+    return button_html
+
+def display_share_section(ticker, name, score):
+    """Display all share buttons."""
     st.markdown("### 🌐 Share This Analysis")
-    st.markdown("Share your insights with the investment community")
+    st.markdown("Share your investment insights with the community")
     
-    # Create columns for buttons
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        tiktok_url = create_share_urls("tiktok", share_text)
-        st.markdown(f'<a href="{tiktok_url}" target="_blank" class="share-btn share-tiktok">🎵 TikTok</a>', unsafe_allow_html=True)
-        
-        twitter_url = create_share_urls("twitter", share_text)
-        st.markdown(f'<a href="{twitter_url}" target="_blank" class="share-btn share-twitter">🐦 X/Twitter</a>', unsafe_allow_html=True)
+        tiktok_btn = share_on_platform("tiktok", ticker, name, score)
+        st.markdown(tiktok_btn, unsafe_allow_html=True)
+        twitter_btn = share_on_platform("twitter", ticker, name, score)
+        st.markdown(twitter_btn, unsafe_allow_html=True)
     
     with col2:
-        facebook_url = create_share_urls("facebook", share_text)
-        st.markdown(f'<a href="{facebook_url}" target="_blank" class="share-btn share-facebook">📘 Facebook</a>', unsafe_allow_html=True)
-        
-        linkedin_url = create_share_urls("linkedin", share_text)
-        st.markdown(f'<a href="{linkedin_url}" target="_blank" class="share-btn share-linkedin">🔗 LinkedIn</a>', unsafe_allow_html=True)
+        facebook_btn = share_on_platform("facebook", ticker, name, score)
+        st.markdown(facebook_btn, unsafe_allow_html=True)
+        linkedin_btn = share_on_platform("linkedin", ticker, name, score)
+        st.markdown(linkedin_btn, unsafe_allow_html=True)
     
     with col3:
-        reddit_url = create_share_urls("reddit", share_text)
-        st.markdown(f'<a href="{reddit_url}" target="_blank" class="share-btn share-reddit">🤖 Reddit</a>', unsafe_allow_html=True)
-        
-        telegram_url = create_share_urls("telegram", share_text)
-        st.markdown(f'<a href="{telegram_url}" target="_blank" class="share-btn share-telegram">📨 Telegram</a>', unsafe_allow_html=True)
+        reddit_btn = share_on_platform("reddit", ticker, name, score)
+        st.markdown(reddit_btn, unsafe_allow_html=True)
+        telegram_btn = share_on_platform("telegram", ticker, name, score)
+        st.markdown(telegram_btn, unsafe_allow_html=True)
     
     with col4:
-        whatsapp_url = create_share_urls("whatsapp", share_text)
-        st.markdown(f'<a href="{whatsapp_url}" target="_blank" class="share-btn share-whatsapp">💬 WhatsApp</a>', unsafe_allow_html=True)
+        whatsapp_btn = share_on_platform("whatsapp", ticker, name, score)
+        st.markdown(whatsapp_btn, unsafe_allow_html=True)
     
+    # Copy link functionality using JavaScript
     st.markdown("---")
-    st.caption("💡 Tip: Click any share button to share your analysis with friends and followers!")
+    copy_html = """
+    <div style="text-align: center; margin-top: 0.5rem;">
+        <button onclick="copyToClipboard()" style="background: #334155; color: white; border: none; padding: 0.3rem 1rem; border-radius: 0.5rem; cursor: pointer;">
+            📋 Copy Share Link
+        </button>
+    </div>
+    <script>
+        function copyToClipboard() {
+            const url = "https://global-buffett-screener.streamlit.app";
+            navigator.clipboard.writeText(url);
+            alert("Link copied to clipboard!");
+        }
+    </script>
+    """
+    st.markdown(copy_html, unsafe_allow_html=True)
+    st.caption("💡 Click any button to share directly or copy the link!")
 
 # ============================================
 # MAJOR INDICES CONFIGURATION
 # ============================================
 MAJOR_INDICES = {
-    "🇺🇸 S&P 500": {"ticker": "^GSPC", "region": "US", "color": "#3b82f6", "market": "US Large Cap"},
-    "🇺🇸 NASDAQ": {"ticker": "^IXIC", "region": "US", "color": "#10b981", "market": "US Tech"},
-    "🇺🇸 Dow Jones": {"ticker": "^DJI", "region": "US", "color": "#f59e0b", "market": "US Blue Chip"},
-    "🇪🇺 Euro Stoxx 50": {"ticker": "^STOXX50E", "region": "Europe", "color": "#8b5cf6", "market": "European Large Cap"},
-    "🇩🇪 DAX": {"ticker": "^GDAXI", "region": "Europe", "color": "#ef4444", "market": "German Large Cap"},
-    "🇬🇧 FTSE 100": {"ticker": "^FTSE", "region": "Europe", "color": "#06b6d4", "market": "UK Large Cap"},
-    "🇫🇷 CAC 40": {"ticker": "^FCHI", "region": "Europe", "color": "#ec4899", "market": "French Large Cap"},
-    "🇯🇵 Nikkei 225": {"ticker": "^N225", "region": "Asia", "color": "#f97316", "market": "Japanese Large Cap"},
-    "🇨🇳 Shanghai Composite": {"ticker": "000001.SS", "region": "Asia", "color": "#eab308", "market": "Chinese Large Cap"},
-    "🇭🇰 Hang Seng": {"ticker": "^HSI", "region": "Asia", "color": "#14b8a6", "market": "Hong Kong Large Cap"},
-    "🇮🇳 Nifty 50": {"ticker": "^NSEI", "region": "Asia", "color": "#a855f7", "market": "Indian Large Cap"},
-    "🇧🇷 Bovespa": {"ticker": "^BVSP", "region": "South America", "color": "#22c55e", "market": "Brazilian Large Cap"},
+    "S&P 500": {"ticker": "^GSPC", "region": "US", "color": "#3b82f6", "market": "US Large Cap"},
+    "NASDAQ": {"ticker": "^IXIC", "region": "US", "color": "#10b981", "market": "US Tech"},
+    "Dow Jones": {"ticker": "^DJI", "region": "US", "color": "#f59e0b", "market": "US Blue Chip"},
+    "Euro Stoxx 50": {"ticker": "^STOXX50E", "region": "Europe", "color": "#8b5cf6", "market": "European Large Cap"},
+    "DAX": {"ticker": "^GDAXI", "region": "Europe", "color": "#ef4444", "market": "German Large Cap"},
+    "FTSE 100": {"ticker": "^FTSE", "region": "Europe", "color": "#06b6d4", "market": "UK Large Cap"},
+    "CAC 40": {"ticker": "^FCHI", "region": "Europe", "color": "#ec4899", "market": "French Large Cap"},
+    "Nikkei 225": {"ticker": "^N225", "region": "Asia", "color": "#f97316", "market": "Japanese Large Cap"},
+    "Hang Seng": {"ticker": "^HSI", "region": "Asia", "color": "#14b8a6", "market": "Hong Kong Large Cap"},
+    "Nifty 50": {"ticker": "^NSEI", "region": "Asia", "color": "#a855f7", "market": "Indian Large Cap"},
+    "Bovespa": {"ticker": "^BVSP", "region": "South America", "color": "#22c55e", "market": "Brazilian Large Cap"},
 }
 
 # Sentiment lexicon
@@ -312,7 +337,7 @@ def analyze_news_sentiment(news_articles):
             'positive_pct': 0, 'negative_pct': 0, 'neutral_pct': 0,
             'overall_score': 0.5, 'overall_label': 'Neutral',
             'overall_color': '#f59e0b', 'overall_icon': '🟡',
-            'sentiments': [], 'detailed_scores': [], 'total_articles': 0
+            'total_articles': 0
         }
     
     sentiments = []
@@ -354,8 +379,6 @@ def analyze_news_sentiment(news_articles):
         'overall_label': overall_label,
         'overall_color': overall_color,
         'overall_icon': overall_icon,
-        'sentiments': sentiments,
-        'detailed_scores': detailed_scores,
         'total_articles': total
     }
 
@@ -434,7 +457,7 @@ def fetch_stock_fundamentals(ticker):
 
 @st.cache_data(ttl=1800)
 def fetch_news(ticker, max_news=15):
-    """Fetch news articles for a ticker (at least 10-15 articles)."""
+    """Fetch news articles for a ticker."""
     news_list = []
     
     try:
@@ -453,39 +476,13 @@ def fetch_news(ticker, max_news=15):
     except:
         pass
     
-    # Generate news if needed
+    # Generate sample news if needed
     if len(news_list) < 10:
-        sample_titles = [
-            f"{ticker} reports strong quarterly earnings",
-            f"Analysts raise price target for {ticker}",
-            f"{ticker} announces strategic acquisition",
-            f"Institutional investors increase stakes in {ticker}",
-            f"{ticker} launches innovative product line",
-            f"Market outlook for {ticker} remains bullish",
-            f"{ticker} declares special dividend",
-            f"Technical analysis shows {ticker} breaking resistance",
-            f"{ticker} expands into new markets",
-            f"Credit rating agency upgrades {ticker}"
-        ]
-        
-        sample_summaries = [
-            "The company reported revenue growth significantly above estimates.",
-            "Multiple analysts have revised their price targets upward.",
-            "The strategic move is expected to add significant value.",
-            "Major hedge funds have added to their positions.",
-            "The new product has received positive early reviews.",
-            "Sector tailwinds suggest continued momentum.",
-            "The special dividend rewards long-term shareholders.",
-            "Breaking above key levels suggests renewed interest.",
-            "Expansion into new markets drives growth.",
-            "The upgrade reflects improved fundamentals."
-        ]
-        
-        for i in range(min(15, len(sample_titles))):
+        for i in range(12):
             news_list.append({
-                "title": sample_titles[i],
-                "summary": sample_summaries[i % len(sample_summaries)],
-                "source": ["Bloomberg", "Reuters", "WSJ", "FT", "CNBC"][i % 5],
+                "title": f"{ticker} Market Update - Important Development {i+1}",
+                "summary": f"Recent market analysis shows interesting trends for {ticker} with potential implications for investors.",
+                "source": ["Bloomberg", "Reuters", "WSJ", "FT"][i % 4],
                 "datetime": time.time() - (i * 3600),
                 "url": "#"
             })
@@ -585,19 +582,14 @@ def main():
         st.markdown("---")
         st.markdown("### 📊 Sentiment Analysis")
         st.caption("Analyzes news articles to determine market sentiment")
-        st.caption("🟢 Positive → 🟡 Neutral → 🔴 Negative")
-        
-        st.markdown("---")
-        st.markdown("### 🌐 Quick Share")
-        share_text = "📊 Just used Global Buffett Screener! Check it out:"
-        st.markdown(f'<a href="{create_share_urls("twitter", share_text)}" target="_blank" style="display: block; margin: 0.5rem 0; color: #1DA1F2; text-decoration: none;">🐦 Share on X</a>', unsafe_allow_html=True)
-        st.markdown(f'<a href="{create_share_urls("linkedin", share_text)}" target="_blank" style="display: block; margin: 0.5rem 0; color: #0077B5; text-decoration: none;">🔗 Share on LinkedIn</a>', unsafe_allow_html=True)
         
         st.markdown("---")
         st.markdown("### 📈 Version")
         st.caption("v2.5 - Social Sharing Feature")
     
     st.markdown("## 🌟 Global Market Overview")
+    st.markdown("Select an index to explore its top Buffett-style opportunities")
+    
     cols = st.columns(4)
     for idx, (name, info) in enumerate(MAJOR_INDICES.items()):
         with cols[idx % 4]:
@@ -608,7 +600,7 @@ def main():
     
     if "selected_index" not in st.session_state:
         st.session_state.selected_index = "^GSPC"
-        st.session_state.selected_index_name = "🇺🇸 S&P 500"
+        st.session_state.selected_index_name = "S&P 500"
     
     st.markdown("---")
     
@@ -717,8 +709,8 @@ def main():
                     else:
                         st.error("❌ AVOID - Does not meet Buffett's criteria")
                 
-                # Share buttons
-                display_share_buttons(selected, fund_data['name'], fund_data["score"])
+                # Share buttons section
+                display_share_section(selected, fund_data['name'], fund_data["score"])
                 
                 st.markdown("---")
                 st.markdown(f"### 📰 News Sentiment Analysis ({sentiment_data['total_articles']} Articles)")
@@ -733,15 +725,15 @@ def main():
                 col_pos, col_neu, col_neg = st.columns(3)
                 with col_pos:
                     pos_count = int(sentiment_data['positive_pct'] / 100 * sentiment_data['total_articles']) if sentiment_data['total_articles'] > 0 else 0
-                    st.metric("📈 Positive", pos_count, delta=f"{sentiment_data['positive_pct']:.0f}%")
+                    st.metric("📈 Positive Articles", pos_count, delta=f"{sentiment_data['positive_pct']:.0f}%")
                 with col_neu:
                     neu_count = int(sentiment_data['neutral_pct'] / 100 * sentiment_data['total_articles']) if sentiment_data['total_articles'] > 0 else 0
-                    st.metric("⚪ Neutral", neu_count, delta=f"{sentiment_data['neutral_pct']:.0f}%")
+                    st.metric("⚪ Neutral Articles", neu_count, delta=f"{sentiment_data['neutral_pct']:.0f}%")
                 with col_neg:
                     neg_count = int(sentiment_data['negative_pct'] / 100 * sentiment_data['total_articles']) if sentiment_data['total_articles'] > 0 else 0
-                    st.metric("📉 Negative", neg_count, delta=f"{sentiment_data['negative_pct']:.0f}%")
+                    st.metric("📉 Negative Articles", neg_count, delta=f"{sentiment_data['negative_pct']:.0f}%")
                 
-                # News articles section
+                # News articles
                 st.markdown("#### 📑 Recent News Articles")
                 
                 for idx, article in enumerate(news[:12]):
@@ -749,4 +741,28 @@ def main():
                     summary = article.get('summary', '')
                     source = article.get('source', 'Unknown')
                     
-                    sentiment, _ = analyze_sentiment
+                    sentiment, _ = analyze_sentiment(f"{title} {summary}")
+                    
+                    if sentiment == "positive":
+                        badge = '<span class="sentiment-positive">🟢 Positive</span>'
+                    elif sentiment == "negative":
+                        badge = '<span class="sentiment-negative">🔴 Negative</span>'
+                    else:
+                        badge = '<span class="sentiment-neutral">🟡 Neutral</span>'
+                    
+                    st.markdown(f"""
+                    <div class="news-item">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <strong style="color: #3b82f6;">{title[:100]}</strong>
+                            {badge}
+                        </div>
+                        <div style="font-size: 0.8rem; color: #94a3b8;">{summary[:150]}...</div>
+                        <div style="font-size: 0.7rem; color: #64748b; margin-top: 0.5rem;">Source: {source}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    st.caption("📊 Data: Yahoo Finance | News: Finnhub | Sentiment Analysis | Share your insights!")
+
+if __name__ == "__main__":
+    main()
