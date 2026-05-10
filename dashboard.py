@@ -6,10 +6,10 @@ import numpy as np
 import plotly.express as px
 from datetime import datetime
 import requests
-from textblob import TextBlob
 import time
 import warnings
 import re
+import json
 
 warnings.filterwarnings('ignore')
 
@@ -189,7 +189,6 @@ st.markdown("""
         transform: translateY(-2px);
     }
     
-    /* Container de compartilhamento - ALINHADO CENTRALIZADO */
     .share-container {
         display: flex;
         justify-content: center;
@@ -200,7 +199,6 @@ st.markdown("""
         padding: 1rem;
         background: var(--ft-warm-white);
         border: 2px solid var(--ft-border);
-        border-radius: 8px;
     }
     
     .share-btn {
@@ -219,7 +217,6 @@ st.markdown("""
         border: none;
         cursor: pointer;
         transition: all 0.2s ease;
-        border-radius: 4px;
     }
     
     .share-btn:hover {
@@ -280,16 +277,8 @@ st.markdown("""
         border-right: 2px solid var(--ft-border);
     }
     
-    h1 {
-        font-size: 2rem !important;
-    }
-    
-    h2 {
-        font-size: 1.5rem !important;
-    }
-    
-    h3 {
-        font-size: 1.2rem !important;
+    h1, h2, h3 {
+        color: var(--ft-navy);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -299,7 +288,7 @@ st.markdown("""
 <div class="ft-header">
     <div class="ft-header-content">
         <div class="ft-logo">Warren Buffett Global Screener</div>
-        <div class="ft-logo-small">15,000+ Global Assets | All World Indices | Fundamental Analysis + Market Sentiment</div>
+        <div class="ft-logo-small">15,000+ Global Assets | All World Indices | Fundamental Analysis</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -335,7 +324,7 @@ GLOBAL_COMPANY_MAP = {
     'spy': 'SPY', 'qqq': 'QQQ', 'dia': 'DIA', 'iwm': 'IWM', 'voo': 'VOO',
     'gld': 'GLD', 'slv': 'SLV', 'uso': 'USO', 'xle': 'XLE', 'xlf': 'XLF',
     # Crypto
-    'bitcoin': 'BTC-USD', 'ethereum': 'ETH-USD', 'cardano': 'ADA-USD', 'solana': 'SOL-USD'
+    'bitcoin': 'BTC-USD', 'ethereum': 'ETH-USD'
 }
 
 # ==================== FUNÇÕES ====================
@@ -394,6 +383,7 @@ def calculate_buffett_score(financials):
     max_score = 0
     results = []
     
+    # 1. ROE > 15%
     max_score += 20
     roe = financials.get('returnOnEquity', 0)
     if roe and roe > 0.15:
@@ -402,6 +392,7 @@ def calculate_buffett_score(financials):
     else:
         results.append({'Criterion': 'ROE > 15%', 'Status': 'No', 'Value': f"{roe*100:.1f}%" if roe else 'N/A', 'Score': 0})
     
+    # 2. Dívida/PL < 0.5
     max_score += 15
     debt = financials.get('debtToEquity', 999)
     if debt and debt < 0.5:
@@ -410,6 +401,7 @@ def calculate_buffett_score(financials):
     else:
         results.append({'Criterion': 'Debt/Equity < 0.5', 'Status': 'No', 'Value': f"{debt:.2f}" if debt else 'N/A', 'Score': 0})
     
+    # 3. Margem > 20%
     max_score += 15
     margin = financials.get('profitMargins', 0)
     if margin and margin > 0.20:
@@ -418,6 +410,7 @@ def calculate_buffett_score(financials):
     else:
         results.append({'Criterion': 'Net Margin > 20%', 'Status': 'No', 'Value': f"{margin*100:.1f}%" if margin else 'N/A', 'Score': 0})
     
+    # 4. P/L < 22
     max_score += 15
     pe = financials.get('trailingPE', 999)
     if pe and 0 < pe < 22:
@@ -426,6 +419,7 @@ def calculate_buffett_score(financials):
     else:
         results.append({'Criterion': 'P/E < 22', 'Status': 'No', 'Value': f"{pe:.1f}" if pe else 'N/A', 'Score': 0})
     
+    # 5. Crescimento > 10%
     max_score += 20
     growth = financials.get('earningsGrowth', 0)
     if growth and growth > 0.10:
@@ -434,6 +428,7 @@ def calculate_buffett_score(financials):
     else:
         results.append({'Criterion': 'Earnings Growth > 10%', 'Status': 'No', 'Value': f"{growth*100:.1f}%" if growth else 'N/A', 'Score': 0})
     
+    # 6. Fluxo Caixa positivo
     max_score += 15
     cashflow = financials.get('freeCashflow', 0)
     if cashflow and cashflow > 0:
@@ -463,77 +458,10 @@ def calculate_buffett_score(financials):
         'rec_class': rec_class
     }
 
-def fetch_sentiment(ticker):
-    """Busca sentimento"""
-    url = f"https://query1.finance.yahoo.com/v1/finance/search?q={ticker}&newsCount=8"
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    
-    try:
-        response = requests.get(url, headers=headers, timeout=8)
-        data = response.json()
-        news_items = data.get('news', [])
-        
-        sentiments = []
-        news_list = []
-        
-        for news in news_items[:8]:
-            title = news.get('title', '')
-            if title:
-                blob = TextBlob(title)
-                polarity = blob.sentiment.polarity
-                sentiments.append(polarity)
-                
-                if polarity > 0.1:
-                    sentiment = "Positive"
-                    indicator = "+"
-                elif polarity < -0.1:
-                    sentiment = "Negative"
-                    indicator = "-"
-                else:
-                    sentiment = "Neutral"
-                    indicator = "="
-                
-                news_list.append({
-                    'title': title,
-                    'sentiment': sentiment,
-                    'indicator': indicator,
-                    'score': polarity,
-                    'link': news.get('link', '#'),
-                    'publisher': news.get('publisher', ''),
-                    'date': datetime.fromtimestamp(news.get('providerPublishTime', 0)).strftime('%Y-%m-%d')
-                })
-        
-        if sentiments:
-            avg_sentiment = np.mean(sentiments)
-            if avg_sentiment > 0.1:
-                overall = "Positive"
-                indicator = "+"
-            elif avg_sentiment < -0.1:
-                overall = "Negative"
-                indicator = "-"
-            else:
-                overall = "Neutral"
-                indicator = "="
-        else:
-            avg_sentiment = 0
-            overall = "Neutral"
-            indicator = "="
-        
-        return {
-            'overall': overall,
-            'indicator': indicator,
-            'score': avg_sentiment,
-            'news': news_list,
-            'count': len(news_list)
-        }
-    except:
-        return {'overall': 'Neutral', 'indicator': '=', 'score': 0, 'news': [], 'count': 0}
-
-def create_share_text(ticker, company_name, final_rec, buffett_score, combined_score):
+def create_share_text(ticker, company_name, final_rec, buffett_score):
     text = f"Warren Buffett Global Screener: {company_name} ({ticker})\n\n"
     text += f"Recommendation: {final_rec}\n"
-    text += f"Buffett Score: {buffett_score:.0f}%\n"
-    text += f"Combined Score: {combined_score:.0f}/100"
+    text += f"Buffett Score: {buffett_score:.0f}%"
     return text
 
 # ==================== SIDEBAR ====================
@@ -553,13 +481,24 @@ with st.sidebar:
     st.markdown('<div class="ft-section-title">Scoring</div>', unsafe_allow_html=True)
     st.markdown("""
     **Combined Score (0-100)**
-    - 60% Buffett Fundamentals
-    - 40% Market Sentiment
+    - Based on 6 Buffett criteria
     
     **Recommendations**
-    - BUY: 70-100
-    - HOLD: 45-69
-    - SELL: 0-44
+    - BUY: 70-100 points
+    - HOLD: 45-69 points
+    - SELL: 0-44 points
+    """)
+    
+    st.markdown('<div class="ft-separator"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="ft-section-title">Coverage</div>', unsafe_allow_html=True)
+    st.markdown("**15,000+ Global Assets**")
+    st.markdown("""
+    - US (S&P 500, NASDAQ, Dow Jones)
+    - Brazil (Ibovespa)
+    - Europe (DAX, CAC, FTSE)
+    - Asia (Nikkei, Hang Seng)
+    - Canada, Australia, India
+    - ETFs, Commodities, Crypto
     """)
 
 # ==================== BUSCA PRINCIPAL ====================
@@ -590,9 +529,7 @@ if analyze_btn and search_query:
         
         if financials and financials['currentPrice'] > 0:
             buffett = calculate_buffett_score(financials)
-            sentiment = fetch_sentiment(ticker)
-            combined_score = (buffett['percentage'] * 0.6 + (sentiment['score'] + 1) * 50 * 0.4)
-            combined_score = max(0, min(100, combined_score))
+            combined_score = buffett['percentage']
             
             if combined_score >= 70:
                 final_rec = "BUY"
@@ -649,36 +586,27 @@ if analyze_btn and search_query:
             st.markdown(f"""
             <div class="ft-recommendation {final_class}">
                 <div class="ft-recommendation-value">{final_rec}</div>
-                <div>Based on Buffett Score + Market Sentiment</div>
+                <div>Based on Warren Buffett's 6 Fundamental Criteria</div>
             </div>
             """, unsafe_allow_html=True)
             
-            col1, col2, col3 = st.columns(3)
+            col1, col2 = st.columns(2)
             
             with col1:
                 st.markdown(f"""
                 <div class="ft-card">
                     <div class="ft-metric-label">Buffett Score</div>
                     <div class="ft-metric-value">{buffett['percentage']:.0f}%</div>
-                    <div>{buffett['score']}/{buffett['max_score']} criteria</div>
+                    <div>{buffett['score']}/{buffett['max_score']} criteria met</div>
                 </div>
                 """, unsafe_allow_html=True)
             
             with col2:
                 st.markdown(f"""
                 <div class="ft-card">
-                    <div class="ft-metric-label">Sentiment</div>
-                    <div class="ft-metric-value">{sentiment['indicator']} {sentiment['overall']}</div>
-                    <div>Score: {sentiment['score']:.2f}</div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with col3:
-                st.markdown(f"""
-                <div class="ft-card">
-                    <div class="ft-metric-label">Combined Score</div>
-                    <div class="ft-metric-value">{combined_score:.0f}<span style="font-size:1rem;">/100</span></div>
+                    <div class="ft-metric-label">Score Bar</div>
                     <div class="score-bar-bg"><div class="score-bar-fill" style="width:{combined_score}%;"></div></div>
+                    <div class="ft-metric-sub">0% - 50% - 100%</div>
                 </div>
                 """, unsafe_allow_html=True)
             
@@ -688,24 +616,11 @@ if analyze_btn and search_query:
             df_criteria = pd.DataFrame(buffett['results'])
             st.dataframe(df_criteria, use_container_width=True, hide_index=True)
             
-            if sentiment['news']:
-                st.markdown('<div class="ft-separator"></div>', unsafe_allow_html=True)
-                st.markdown('<div class="ft-section-title">Latest News</div>', unsafe_allow_html=True)
-                
-                for news in sentiment['news'][:5]:
-                    st.markdown(f"""
-                    <div class="ft-card">
-                        <div><strong>{news['indicator']} {news['sentiment']}</strong> (score: {news['score']:.2f})</div>
-                        <div>{news['date']} | {news['publisher']}</div>
-                        <div><a href="{news['link']}" target="_blank">{news['title'][:100]}...</a></div>
-                    </div>
-                    """, unsafe_allow_html=True)
-            
-            # ==================== BOTÕES DE COMPARTILHAMENTO ALINHADOS ====================
+            # ==================== BOTÕES DE COMPARTILHAMENTO ====================
             st.markdown('<div class="ft-separator"></div>', unsafe_allow_html=True)
             st.markdown('<div class="ft-section-title">Share Results</div>', unsafe_allow_html=True)
             
-            share_text = create_share_text(ticker, financials['name'], final_rec, buffett['percentage'], combined_score)
+            share_text = create_share_text(ticker, financials['name'], final_rec, buffett['percentage'])
             share_encoded = share_text.replace('\n', '%0A')
             
             twitter_url = f"https://twitter.com/intent/tweet?text={share_encoded}"
@@ -714,7 +629,6 @@ if analyze_btn and search_query:
             facebook_url = f"https://www.facebook.com/sharer/sharer.php?u=share&quote={share_text}"
             email_url = f"mailto:?subject=Warren Buffett Analysis: {ticker}&body={share_encoded}"
             
-            # Container centralizado para os botões
             st.markdown(f"""
             <div class="share-container">
                 <a href="{twitter_url}" target="_blank" class="share-btn btn-twitter">Twitter</a>
@@ -725,21 +639,22 @@ if analyze_btn and search_query:
             </div>
             """, unsafe_allow_html=True)
             
-            # Download
             report_data = pd.DataFrame([{
                 'Ticker': ticker,
                 'Company': financials['name'],
                 'Price': financials['currentPrice'],
+                'Market Cap Bn': financials['marketCap']/1e9,
+                'P/E': financials['trailingPE'],
+                'ROE': f"{financials['returnOnEquity']*100:.1f}%" if financials['returnOnEquity'] else "N/A",
                 'Buffett Score': f"{buffett['percentage']:.0f}%",
-                'Recommendation': final_rec,
-                'Combined Score': f"{combined_score:.0f}/100"
+                'Recommendation': final_rec
             }])
             
             csv = report_data.to_csv(index=False).encode('utf-8')
             st.download_button("Download CSV", csv, f"WB_{ticker}.csv", "text/csv")
             
         else:
-            st.error(f"No data found for '{search_query}'")
+            st.error(f"No data found for '{search_query}'. Please check the ticker or company name.")
 
 # ==================== GLOBAL SCREENING ====================
 if screen_btn:
@@ -754,19 +669,17 @@ if screen_btn:
         financials = get_stock_data(ticker)
         if financials and financials['currentPrice'] > 0:
             buffett = calculate_buffett_score(financials)
-            sentiment = fetch_sentiment(ticker)
-            combined_score = (buffett['percentage'] * 0.6 + (sentiment['score'] + 1) * 50 * 0.4)
-            combined_score = max(0, min(100, combined_score))
             
-            rec = "BUY" if combined_score >= 70 else "HOLD" if combined_score >= 45 else "SELL"
+            rec = "BUY" if buffett['percentage'] >= 70 else "HOLD" if buffett['percentage'] >= 45 else "SELL"
             
             results.append({
                 'Ticker': ticker,
-                'Company': financials['name'][:25],
+                'Company': financials['name'][:30],
                 'Price': financials['currentPrice'],
+                'P/E': financials['trailingPE'],
+                'ROE': f"{financials['returnOnEquity']*100:.1f}%" if financials['returnOnEquity'] else "N/A",
                 'Buffett Score': f"{buffett['percentage']:.0f}%",
-                'Recommendation': rec,
-                'Combined': f"{combined_score:.0f}/100"
+                'Recommendation': rec
             })
         
         progress_bar.progress((idx + 1) / len(screening_list))
@@ -778,12 +691,21 @@ if screen_btn:
         df_results = pd.DataFrame(results)
         st.dataframe(df_results, use_container_width=True, hide_index=True)
         
+        # Gráfico
+        fig = px.bar(df_results, x='Ticker', y=[float(x.replace('%', '')) for x in df_results['Buffett Score']],
+                     title='Global Screening - Buffett Scores',
+                     color='Buffett Score', color_continuous_scale=['#d32f2f', '#ed6c02', '#2e7d32'])
+        fig.update_layout(height=450)
+        st.plotly_chart(fig, use_container_width=True)
+        
         csv_screen = df_results.to_csv(index=False).encode('utf-8')
         st.download_button("Download Screening CSV", csv_screen, "WB_screening.csv", "text/csv")
 
 # ==================== FOOTER ====================
 st.markdown("""
 <div class="ft-footer">
-    15,000+ Global Assets | All World Indices | Data: Yahoo Finance | Sentiment: NLP | Educational purpose only.
+    <strong>15,000+ Global Assets | All World Indices</strong><br>
+    Data: Yahoo Finance | Methodology: Warren Buffett's 6 Investment Principles<br>
+    Educational purpose only. Not investment advice.
 </div>
 """, unsafe_allow_html=True)
