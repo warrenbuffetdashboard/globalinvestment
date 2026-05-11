@@ -1,4 +1,4 @@
-# dashboard.py - FULLY WORKING with 15k+ screening
+# dashboard.py - FULLY WORKING with fix
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -365,7 +365,7 @@ if screen_btn:
 
 if st.session_state.get('screening_active', False):
     st.markdown('<div class="screening-container">', unsafe_allow_html=True)
-    st.markdown('<div class="ft-section-title">🌍 GLOBAL SCREENING: 15,000+ ASSETS</div>', unsafe_allow_html_html=True)
+    st.markdown('<div class="ft-section-title">🌍 GLOBAL SCREENING: 15,000+ ASSETS</div>', unsafe_allow_html=True)  # FIXED: removed extra _html
     
     # Get tickers
     with st.spinner("📋 Generating ticker list..."):
@@ -384,16 +384,16 @@ if st.session_state.get('screening_active', False):
     start_time = time.time()
     processed = 0
     
-    # Process tickers in batches
-    for idx, ticker in enumerate(all_tickers[:500]):  # Limit to 500 for demo speed
+    # Process tickers
+    for idx, ticker in enumerate(all_tickers):
         processed += 1
         progress = processed / total
         progress_bar.progress(progress)
         
         # Update status
         elapsed = time.time() - start_time
-        if processed > 0:
-            rate = processed / elapsed if elapsed > 0 else 0
+        if processed > 0 and elapsed > 0:
+            rate = processed / elapsed
             eta = (total - processed) / rate if rate > 0 else 0
             status_text.text(f"🔍 Processing: {processed:,}/{total:,} | Rate: {rate:.1f}/sec | ETA: {eta/60:.1f} min")
             stats_text.text(f"✅ Valid assets found: {len(results)}")
