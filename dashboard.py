@@ -1,4 +1,4 @@
-# dashboard.py - NO FINNHUB AT ALL (uses only Yahoo Finance + Alpha Vantage)
+# dashboard.py - Safe dictionary access, no Finnhub
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -16,10 +16,10 @@ warnings.filterwarnings('ignore')
 
 st.set_page_config(page_title="Warren Buffett Global Screener", page_icon="📈", layout="wide")
 
-# ------------------------ API KEYS ------------------------
+# ------------------------ API KEYS (optional) ------------------------
 ALPHA_VANTAGE_KEY = "GKOFM3JHT9YJ9HYO"  # Optional, only used if available
 
-# ------------------------ CSS ------------------------
+# ------------------------ CSS (unchanged) ------------------------
 st.markdown("""
 <style>
     :root { --ft-offwhite: #fffef9; --ft-warm-white: #fff8f0; --ft-coral: #ff6347; --ft-navy: #0a2540; --ft-border: #e6e0d5; }
@@ -70,6 +70,7 @@ def fetch_yfinance(ticker: str) -> Dict:
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
+        # Use .get() with defaults to avoid KeyError
         return {
             'name': info.get('longName', ticker),
             'sector': info.get('sector', 'N/A'),
@@ -87,8 +88,25 @@ def fetch_yfinance(ticker: str) -> Dict:
             'beta': info.get('beta', 0),
             'target_price': info.get('targetMeanPrice', 0),
         }
-    except:
-        return {}
+    except Exception as e:
+        # Return a minimal dict with default values on any error
+        return {
+            'name': ticker,
+            'sector': 'N/A',
+            'country': 'Global',
+            'price': 0,
+            'market_cap': 0,
+            'pe': 0,
+            'forward_pe': 0,
+            'roe': 0,
+            'debt_to_equity': 0,
+            'profit_margin': 0,
+            'earnings_growth': 0,
+            'free_cash_flow': 0,
+            'dividend_yield': 0,
+            'beta': 0,
+            'target_price': 0,
+        }
 
 @st.cache_data(ttl=3600)
 def fetch_alpha_vantage(ticker: str) -> Dict:
@@ -110,39 +128,43 @@ def fetch_alpha_vantage(ticker: str) -> Dict:
 
 def get_aggregated_fundamentals(ticker: str) -> Dict:
     base = fetch_yfinance(ticker)
-    if base['price'] == 0:
+    # If price is 0, the ticker is invalid – return as is
+    if base.get('price', 0) == 0:
         return base
     # Try to enrich with Alpha Vantage if available and missing
-    if base['roe'] == 0:
+    if base.get('roe', 0) == 0:
         av = fetch_alpha_vantage(ticker)
         for k in ['roe', 'profit_margin', 'pe', 'beta']:
             if av.get(k) and not base.get(k):
-                base[k] = av[k]
-    defaults = {'roe':0, 'debt_to_equity':0, 'profit_margin':0, 'earnings_growth':0, 'free_cash_flow':0,
-                'pe':0, 'beta':0, 'name':ticker, 'sector':'N/A', 'country':'Global', 'price':0,
-                'market_cap':0, 'forward_pe':0, 'dividend_yield':0, 'target_price':0}
-    for k,v in defaults.items():
+                base[k] = av.get(k)
+    # Ensure all keys exist with defaults
+    defaults = {
+        'roe': 0, 'debt_to_equity': 0, 'profit_margin': 0, 'earnings_growth': 0,
+        'free_cash_flow': 0, 'pe': 0, 'beta': 0, 'name': ticker, 'sector': 'N/A',
+        'country': 'Global', 'price': 0, 'market_cap': 0, 'forward_pe': 0,
+        'dividend_yield': 0, 'target_price': 0
+    }
+    for k, v in defaults.items():
         if k not in base or base[k] is None:
             base[k] = v
     return base
 
 @st.cache_data(ttl=1800)
 def fetch_news_sentiment(ticker: str) -> Dict:
-    """Only Yahoo Finance news – no Finnhub."""
     articles = []
     try:
         url = f"https://query1.finance.yahoo.com/v1/finance/search?q={ticker}&newsCount=8"
         data = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}).json()
         for item in data.get('news', []):
             articles.append({
-                'title': item.get('title',''),
+                'title': item.get('title', ''),
                 'link': item.get('link', '#'),
                 'source': 'Yahoo Finance',
                 'date': datetime.fromtimestamp(item.get('providerPublishTime', 0)).strftime('%Y-%m-%d') if item.get('providerPublishTime') else ''
             })
     except:
         pass
-    # Sentiment analysis
+    # Sentiment
     sentiments = []
     for art in articles:
         blob = TextBlob(art['title'])
@@ -210,7 +232,7 @@ def calculate_buffett_score(fin: Dict) -> Dict:
 def combined_score(buffett_pct: float, sentiment_score: float) -> float:
     return (buffett_pct * 0.6) + ((sentiment_score + 1) * 50 * 0.4)
 
-# ======================== AUTOCOMPLETE (Yahoo Finance search) ========================
+# ======================== AUTOCOMPLETE ========================
 @st.cache_data(ttl=300)
 def search_yahoo_suggestions(query: str) -> List[Dict]:
     if len(query) < 2:
@@ -274,7 +296,7 @@ if search_term and len(search_term) >= 2:
             if st.button(f"Analyze {ticker_candidate}", key="auto_analyse_btn"):
                 with st.spinner(f"Analyzing {ticker_candidate}..."):
                     fin = get_aggregated_fundamentals(ticker_candidate)
-                    if fin['price'] > 0:
+                    if fin.get('price', 0) > 0:
                         buff = calculate_buffett_score(fin)
                         news = fetch_news_sentiment(ticker_candidate)
                         comb = combined_score(buff['percentage'], news['score'])
@@ -283,10 +305,10 @@ if search_term and len(search_term) >= 2:
 
                         st.markdown('<div class="ft-separator"></div>', unsafe_allow_html=True)
                         c1, c2, c3, c4 = st.columns(4)
-                        with c1: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Company</div><div class='ft-metric-value'>{fin['name'][:35]}</div><div>{ticker_candidate} | {fin['country']}</div></div>", unsafe_allow_html=True)
-                        with c2: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Price</div><div class='ft-metric-value'>${fin['price']:.2f}</div><div>Target: ${fin['target_price']:.2f}</div></div>", unsafe_allow_html=True)
-                        with c3: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Market Cap</div><div class='ft-metric-value'>${fin['market_cap']/1e9:.1f}bn</div><div>Beta: {fin['beta']:.2f}</div></div>", unsafe_allow_html=True)
-                        with c4: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>P/E</div><div class='ft-metric-value'>{fin['pe']:.1f}</div><div>Forward: {fin['forward_pe']:.1f}</div></div>", unsafe_allow_html=True)
+                        with c1: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Company</div><div class='ft-metric-value'>{fin.get('name', ticker_candidate)[:35]}</div><div>{ticker_candidate} | {fin.get('country', 'Global')}</div></div>", unsafe_allow_html=True)
+                        with c2: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Price</div><div class='ft-metric-value'>${fin.get('price', 0):.2f}</div><div>Target: ${fin.get('target_price', 0):.2f}</div></div>", unsafe_allow_html=True)
+                        with c3: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Market Cap</div><div class='ft-metric-value'>${fin.get('market_cap', 0)/1e9:.1f}bn</div><div>Beta: {fin.get('beta', 0):.2f}</div></div>", unsafe_allow_html=True)
+                        with c4: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>P/E</div><div class='ft-metric-value'>{fin.get('pe', 0):.1f}</div><div>Forward: {fin.get('forward_pe', 0):.1f}</div></div>", unsafe_allow_html=True)
 
                         st.markdown(f"<div class='ft-recommendation {final_cls}'><div class='ft-recommendation-value'>{final_rec}</div><div>Combined Score: {comb:.0f}/100 (Buffett {buff['percentage']:.0f}% + Sentiment {news['score']:.2f})</div><div>📰 {news['count']} news articles</div></div>", unsafe_allow_html=True)
 
@@ -316,7 +338,7 @@ if manual_analyse and search_term:
     ticker_direct = search_term.strip().upper()
     with st.spinner(f"Analyzing {ticker_direct} ..."):
         fin = get_aggregated_fundamentals(ticker_direct)
-        if fin['price'] == 0:
+        if fin.get('price', 0) == 0:
             st.error(f"'{ticker_direct}' is not a valid ticker or has no data. Try using autocomplete.")
         else:
             buff = calculate_buffett_score(fin)
@@ -327,10 +349,10 @@ if manual_analyse and search_term:
 
             st.markdown('<div class="ft-separator"></div>', unsafe_allow_html=True)
             c1, c2, c3, c4 = st.columns(4)
-            with c1: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Company</div><div class='ft-metric-value'>{fin['name'][:35]}</div><div>{ticker_direct} | {fin['country']}</div></div>", unsafe_allow_html=True)
-            with c2: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Price</div><div class='ft-metric-value'>${fin['price']:.2f}</div><div>Target: ${fin['target_price']:.2f}</div></div>", unsafe_allow_html=True)
-            with c3: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Market Cap</div><div class='ft-metric-value'>${fin['market_cap']/1e9:.1f}bn</div><div>Beta: {fin['beta']:.2f}</div></div>", unsafe_allow_html=True)
-            with c4: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>P/E</div><div class='ft-metric-value'>{fin['pe']:.1f}</div><div>Forward: {fin['forward_pe']:.1f}</div></div>", unsafe_allow_html=True)
+            with c1: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Company</div><div class='ft-metric-value'>{fin.get('name', ticker_direct)[:35]}</div><div>{ticker_direct} | {fin.get('country', 'Global')}</div></div>", unsafe_allow_html=True)
+            with c2: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Price</div><div class='ft-metric-value'>${fin.get('price', 0):.2f}</div><div>Target: ${fin.get('target_price', 0):.2f}</div></div>", unsafe_allow_html=True)
+            with c3: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Market Cap</div><div class='ft-metric-value'>${fin.get('market_cap', 0)/1e9:.1f}bn</div><div>Beta: {fin.get('beta', 0):.2f}</div></div>", unsafe_allow_html=True)
+            with c4: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>P/E</div><div class='ft-metric-value'>{fin.get('pe', 0):.1f}</div><div>Forward: {fin.get('forward_pe', 0):.1f}</div></div>", unsafe_allow_html=True)
 
             st.markdown(f"<div class='ft-recommendation {final_cls}'><div class='ft-recommendation-value'>{final_rec}</div><div>Combined Score: {comb:.0f}/100 (Buffett {buff['percentage']:.0f}% + Sentiment {news['score']:.2f})</div><div>📰 {news['count']} news articles</div></div>", unsafe_allow_html=True)
 
@@ -415,15 +437,15 @@ if screen_btn:
         status_text.text(f"🔍 Processing {idx+1} of {total} assets | Current: {ticker}")
 
         fin = get_aggregated_fundamentals(ticker)
-        if fin['price'] > 0:
+        if fin.get('price', 0) > 0:
             buff = calculate_buffett_score(fin)
             sent = fetch_news_sentiment(ticker)
             comb = combined_score(buff['percentage'], sent['score'])
             results.append({
                 'Ticker': ticker,
-                'Company': fin['name'][:30],
-                'Price': fin['price'],
-                'P/E': fin['pe'],
+                'Company': fin.get('name', ticker)[:30],
+                'Price': fin.get('price', 0),
+                'P/E': fin.get('pe', 0),
                 'Buffett Score': f"{buff['percentage']:.0f}%",
                 'Sentiment': sent['overall'],
                 'Recommendation': 'BUY' if comb>=70 else ('HOLD' if comb>=45 else 'SELL'),
