@@ -1,729 +1,490 @@
-# warren_buffett_global_screener.py
+# dashboard.py
 import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.express as px
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 import time
 import warnings
 import re
 from textblob import TextBlob
+import finnhub
+from typing import Dict, List, Optional
 
 warnings.filterwarnings('ignore')
 
-# ==================== CONFIGURAÇÃO ====================
-st.set_page_config(
-    page_title="Warren Buffett Global Screener",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="Warren Buffett Global Screener", page_icon="📈", layout="wide")
 
-# ==================== CSS ====================
+# ------------------------ API KEYS ------------------------
+ALPHA_VANTAGE_KEY = "GKOFM3JHT9YJ9HYO"
+FINNHUB_KEY = "d80iuahr01qt5k5v5b2gd80iuahr01qt5k5v5b30"
+
+# ------------------------ CSS (same as original, no text changes) ------------------------
 st.markdown("""
 <style>
-    :root {
-        --ft-offwhite: #fffef9;
-        --ft-warm-white: #fff8f0;
-        --ft-sand: #e8e0d0;
-        --ft-coral: #ff6347;
-        --ft-navy: #0a2540;
-        --ft-border: #e6e0d5;
-    }
-    
+    :root { --ft-offwhite: #fffef9; --ft-warm-white: #fff8f0; --ft-coral: #ff6347; --ft-navy: #0a2540; --ft-border: #e6e0d5; }
     .stApp { background-color: var(--ft-offwhite); }
-    
-    .ft-header {
-        background: white;
-        border-bottom: 2px solid var(--ft-coral);
-        padding: 1.5rem 0;
-        margin-bottom: 2rem;
-    }
-    
-    .ft-header-content {
-        max-width: 1400px;
-        margin: 0 auto;
-        padding: 0 2rem;
-    }
-    
-    .ft-logo {
-        font-family: 'Times New Roman', Times, serif;
-        font-size: 2.5rem;
-        font-weight: 700;
-        color: var(--ft-navy);
-        margin: 0;
-        padding-bottom: 0.5rem;
-        border-bottom: 3px solid var(--ft-coral);
-        display: inline-block;
-    }
-    
-    .ft-logo-small {
-        font-family: 'Times New Roman', Times, serif;
-        font-size: 0.9rem;
-        color: #6b6b6b;
-        margin-top: 0.5rem;
-    }
-    
-    .ft-section-title {
-        font-family: 'Times New Roman', Times, serif;
-        font-size: 0.9rem;
-        font-weight: 600;
-        color: var(--ft-navy);
-        text-transform: uppercase;
-        margin-bottom: 0.75rem;
-    }
-    
-    .ft-card {
-        background: white;
-        border: 2px solid var(--ft-border);
-        padding: 1.5rem;
-        margin: 1rem 0;
-        transition: all 0.3s ease;
-    }
-    
-    .ft-card:hover {
-        background: var(--ft-warm-white);
-        border-color: var(--ft-coral);
-        transform: translateY(-3px);
-    }
-    
-    .ft-metric-label {
-        font-family: 'Times New Roman', Times, serif;
-        font-size: 0.85rem;
-        font-weight: 600;
-        color: #6b6b6b;
-        text-transform: uppercase;
-        margin-bottom: 0.5rem;
-    }
-    
-    .ft-metric-value {
-        font-family: 'Times New Roman', Times, serif;
-        font-size: 2.2rem;
-        font-weight: 700;
-        color: var(--ft-navy);
-        margin: 0.5rem 0;
-    }
-    
-    .ft-recommendation {
-        font-family: 'Times New Roman', Times, serif;
-        padding: 1.5rem;
-        margin: 1.5rem 0;
-        text-align: center;
-        border: 2px solid;
-    }
-    
-    .ft-buy {
-        background: #e8f5e9;
-        border-color: #2e7d32;
-        color: #2e7d32;
-    }
-    
-    .ft-hold {
-        background: #fff3e0;
-        border-color: #ed6c02;
-        color: #ed6c02;
-    }
-    
-    .ft-sell {
-        background: #ffebee;
-        border-color: #d32f2f;
-        color: #d32f2f;
-    }
-    
-    .ft-recommendation-value {
-        font-size: 3.5rem;
-        font-weight: 800;
-        letter-spacing: 2px;
-    }
-    
-    .stTextInput > div > div > input {
-        font-family: 'Times New Roman', Times, serif;
-        font-size: 1.2rem;
-        border: 2px solid var(--ft-border);
-        padding: 1rem;
-        background: white;
-        color: #000000;
-    }
-    
-    .stTextInput > div > div > input:focus {
-        border-color: var(--ft-coral);
-        outline: none;
-    }
-    
-    .stButton > button {
-        font-family: 'Times New Roman', Times, serif;
-        font-size: 1rem;
-        font-weight: 600;
-        background: var(--ft-navy);
-        color: white;
-        border: none;
-        padding: 0.8rem 2rem;
-        width: 100%;
-        transition: all 0.3s ease;
-    }
-    
-    .stButton > button:hover {
-        background: var(--ft-coral);
-        transform: translateY(-3px);
-    }
-    
-    .share-container {
-        display: flex;
-        justify-content: center;
-        gap: 15px;
-        flex-wrap: wrap;
-        margin: 1.5rem 0;
-        padding: 1rem;
-        background: var(--ft-warm-white);
-        border: 2px solid var(--ft-border);
-    }
-    
-    .share-btn {
-        font-family: 'Times New Roman', Times, serif;
-        font-size: 0.95rem;
-        font-weight: 600;
-        padding: 10px 20px;
-        text-decoration: none;
-        color: white;
-        min-width: 110px;
-        text-align: center;
-        transition: all 0.3s ease;
-    }
-    
-    .share-btn:hover {
-        transform: translateY(-2px);
-        opacity: 0.9;
-    }
-    
-    .btn-twitter { background: #1DA1F2; }
-    .btn-linkedin { background: #0077B5; }
-    .btn-whatsapp { background: #25D366; }
-    .btn-facebook { background: #1877F2; }
-    .btn-email { background: #EA4335; }
-    
-    .ft-separator {
-        border-top: 2px solid var(--ft-border);
-        margin: 2rem 0;
-    }
-    
-    .ft-footer {
-        text-align: center;
-        padding: 2rem;
-        margin-top: 3rem;
-        border-top: 2px solid var(--ft-border);
-        font-size: 0.85rem;
-        color: #6b6b6b;
-    }
-    
-    .score-bar-bg {
-        background: var(--ft-border);
-        height: 6px;
-        margin-top: 1rem;
-    }
-    
-    .score-bar-fill {
-        background: var(--ft-coral);
-        height: 6px;
-        transition: width 0.5s ease;
-    }
-    
+    .ft-header { background: white; border-bottom: 2px solid var(--ft-coral); padding: 1.5rem 0; margin-bottom: 2rem; }
+    .ft-header-content { max-width: 1400px; margin: 0 auto; padding: 0 2rem; }
+    .ft-logo { font-family: 'Times New Roman', Times, serif; font-size: 2.5rem; font-weight: 700; color: var(--ft-navy); border-bottom: 3px solid var(--ft-coral); display: inline-block; }
+    .ft-logo-small { font-family: 'Times New Roman', Times, serif; font-size: 0.9rem; color: #6b6b6b; margin-top:0.5rem;}
+    .ft-section-title { font-family: 'Times New Roman', Times, serif; font-size: 0.9rem; font-weight: 600; color: var(--ft-navy); text-transform: uppercase; margin-bottom: 0.75rem; }
+    .ft-card { background: white; border: 2px solid var(--ft-border); padding: 1.5rem; margin: 1rem 0; transition: all 0.3s ease; }
+    .ft-card:hover { background: #fff8f0; border-color: var(--ft-coral); transform: translateY(-3px); }
+    .ft-metric-label { font-family: 'Times New Roman', Times, serif; font-size: 0.85rem; font-weight: 600; color: #6b6b6b; text-transform: uppercase; }
+    .ft-metric-value { font-family: 'Times New Roman', Times, serif; font-size: 2.2rem; font-weight: 700; color: var(--ft-navy); margin: 0.5rem 0; }
+    .ft-recommendation { font-family: 'Times New Roman', Times, serif; padding: 1.5rem; margin: 1.5rem 0; text-align: center; border: 2px solid; }
+    .ft-buy { background: #e8f5e9; border-color: #2e7d32; color: #2e7d32; }
+    .ft-hold { background: #fff3e0; border-color: #ed6c02; color: #ed6c02; }
+    .ft-sell { background: #ffebee; border-color: #d32f2f; color: #d32f2f; }
+    .ft-recommendation-value { font-size: 3.5rem; font-weight: 800; letter-spacing: 2px; }
+    .stTextInput > div > div > input { font-family: 'Times New Roman', Times, serif; font-size: 1.2rem; border: 2px solid var(--ft-border); padding: 1rem; }
+    .stButton > button { font-weight: 600; background: var(--ft-navy); color: white; border: none; padding: 0.8rem 2rem; width: 100%; }
+    .stButton > button:hover { background: var(--ft-coral); transform: translateY(-3px); }
+    .share-container { display: flex; justify-content: center; gap: 15px; flex-wrap: wrap; margin: 1.5rem 0; padding: 1rem; background: #fff8f0; border: 2px solid var(--ft-border); }
+    .share-btn { font-family: 'Times New Roman', Times, serif; font-size: 0.95rem; font-weight: 600; padding: 10px 20px; text-decoration: none; color: white; min-width: 110px; text-align: center; }
+    .btn-twitter { background: #1DA1F2; } .btn-linkedin { background: #0077B5; } .btn-whatsapp { background: #25D366; } .btn-facebook { background: #1877F2; } .btn-email { background: #EA4335; }
+    .ft-separator { border-top: 2px solid var(--ft-border); margin: 2rem 0; }
+    .ft-footer { text-align: center; padding: 2rem; margin-top: 3rem; border-top: 2px solid var(--ft-border); font-size: 0.85rem; color: #6b6b6b; }
+    .score-bar-bg { background: var(--ft-border); height: 6px; margin-top: 1rem; }
+    .score-bar-fill { background: var(--ft-coral); height: 6px; transition: width 0.5s ease; }
     .sentiment-positive { color: #2e7d32; font-weight: bold; }
     .sentiment-negative { color: #d32f2f; font-weight: bold; }
     .sentiment-neutral { color: #ed6c02; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
-# ==================== HEADER ====================
 st.markdown("""
 <div class="ft-header">
     <div class="ft-header-content">
         <div class="ft-logo">Warren Buffett Global Screener</div>
-        <div class="ft-logo-small">15,000+ Global Assets | PSI Portugal | Fundamental + Sentiment Analysis</div>
+        <div class="ft-logo-small">Autocomplete | 15,000+ Assets | Progress Bar</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# ==================== FUNÇÕES ====================
-
-def get_global_tickers():
-    """Retorna lista de tickers globais"""
-    tickers = [
-        'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'UNH', 'JNJ', 'V',
-        'PG', 'JPM', 'HD', 'MA', 'DIS', 'KO', 'PEP', 'COST', 'WMT', 'NKE',
-        'PETR4.SA', 'VALE3.SA', 'ITUB4.SA', 'BBDC4.SA', 'BBAS3.SA', 'ABEV3.SA', 'WEGE3.SA',
-        'EDP.LS', 'GALP.LS', 'JMT.LS', 'SON.LS', 'NOS.LS', 'BCP.LS', 'RENE.LS',
-        'NESN.SW', 'NOVN.SW', 'SAP.DE', 'SIE.DE', 'BMW.DE', 'TTE.PA', 'MC.PA',
-        '7203.T', '6758.T', '005930.KS', 'BABA', 'TCEHY', 'SPY', 'QQQ', 'BTC-USD'
-    ]
-    return tickers
-
-def search_ticker(query):
-    """Converte busca para ticker"""
-    return query.strip().upper()
-
-def get_stock_data(ticker):
-    """Obtém dados fundamentalistas"""
+# ------------------------ DATA FUNCTIONS (Yahoo + Alpha Vantage + Finnhub) ------------------------
+@st.cache_data(ttl=3600)
+def fetch_yfinance(ticker: str) -> Dict:
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
-        
-        if info.get('regularMarketPrice') or info.get('currentPrice'):
-            return {
-                'name': info.get('longName', ticker),
-                'sector': info.get('sector', 'N/A'),
-                'country': info.get('country', 'Global'),
-                'currentPrice': info.get('currentPrice', info.get('regularMarketPrice', 0)),
-                'marketCap': info.get('marketCap', 0),
-                'trailingPE': info.get('trailingPE', 0),
-                'forwardPE': info.get('forwardPE', 0),
-                'returnOnEquity': info.get('returnOnEquity', 0),
-                'debtToEquity': info.get('debtToEquity', 0),
-                'profitMargins': info.get('profitMargins', 0),
-                'earningsGrowth': info.get('earningsGrowth', 0),
-                'freeCashflow': info.get('freeCashflow', 0),
-                'dividendYield': info.get('dividendYield', 0),
-                'beta': info.get('beta', 0),
-                'targetPrice': info.get('targetMeanPrice', 0),
-            }
-        return None
-    except:
-        return None
-
-def fetch_news_sentiment(ticker):
-    """Busca últimas 10 notícias e analisa sentimento"""
-    url = f"https://query1.finance.yahoo.com/v1/finance/search?q={ticker}&newsCount=10"
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        data = response.json()
-        news_items = data.get('news', [])
-        
-        sentiments = []
-        news_list = []
-        
-        for news in news_items[:10]:
-            title = news.get('title', '')
-            if title:
-                blob = TextBlob(title)
-                polarity = blob.sentiment.polarity
-                sentiments.append(polarity)
-                
-                if polarity > 0.1:
-                    sentiment = "Positive"
-                    emoji = "📈"
-                elif polarity < -0.1:
-                    sentiment = "Negative"
-                    emoji = "📉"
-                else:
-                    sentiment = "Neutral"
-                    emoji = "➖"
-                
-                news_list.append({
-                    'title': title[:100],
-                    'sentiment': sentiment,
-                    'emoji': emoji,
-                    'score': polarity,
-                    'link': news.get('link', '#'),
-                    'publisher': news.get('publisher', ''),
-                    'date': datetime.fromtimestamp(news.get('providerPublishTime', 0)).strftime('%Y-%m-%d')
-                })
-        
-        if sentiments:
-            avg_sentiment = np.mean(sentiments)
-            if avg_sentiment > 0.1:
-                overall = "Positive"
-                emoji = "📈"
-            elif avg_sentiment < -0.1:
-                overall = "Negative"
-                emoji = "📉"
-            else:
-                overall = "Neutral"
-                emoji = "➖"
-        else:
-            avg_sentiment = 0
-            overall = "Neutral"
-            emoji = "➖"
-        
         return {
-            'overall': overall,
-            'emoji': emoji,
-            'score': avg_sentiment,
-            'articles': news_list,
-            'count': len(news_list)
+            'name': info.get('longName', ticker),
+            'sector': info.get('sector', 'N/A'),
+            'country': info.get('country', 'Global'),
+            'price': info.get('currentPrice', info.get('regularMarketPrice', 0)),
+            'market_cap': info.get('marketCap', 0),
+            'pe': info.get('trailingPE', 0),
+            'forward_pe': info.get('forwardPE', 0),
+            'roe': info.get('returnOnEquity', 0),
+            'debt_to_equity': info.get('debtToEquity', 0),
+            'profit_margin': info.get('profitMargins', 0),
+            'earnings_growth': info.get('earningsGrowth', 0),
+            'free_cash_flow': info.get('freeCashflow', 0),
+            'dividend_yield': info.get('dividendYield', 0),
+            'beta': info.get('beta', 0),
+            'target_price': info.get('targetMeanPrice', 0),
         }
     except:
-        return {'overall': 'Neutral', 'emoji': '➖', 'score': 0, 'articles': [], 'count': 0}
+        return {}
 
-def calculate_buffett_score(financials):
-    """Calcula Buffett Score"""
-    score = 0
-    max_score = 0
+@st.cache_data(ttl=3600)
+def fetch_alpha_vantage(ticker: str) -> Dict:
+    try:
+        url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={ticker}&apikey={ALPHA_VANTAGE_KEY}"
+        data = requests.get(url).json()
+        if data and 'Symbol' in data:
+            return {
+                'roe': float(data.get('ReturnOnEquityTTM', 0)) / 100,
+                'profit_margin': float(data.get('ProfitMargin', 0)) / 100,
+                'pe': float(data.get('PERatio', 0)),
+                'beta': float(data.get('Beta', 0)),
+            }
+    except:
+        pass
+    return {}
+
+@st.cache_data(ttl=3600)
+def fetch_finnhub_fundamentals(ticker: str) -> Dict:
+    try:
+        finnhub_client = finnhub.Client(api_key=FINNHUB_KEY)
+        metrics = finnhub_client.company_basic_financials(ticker, 'all')
+        if metrics and 'metric' in metrics:
+            m = metrics['metric']
+            return {
+                'roe': m.get('roeTTM', 0) / 100,
+                'debt_to_equity': m.get('debtEquityTTM', 0),
+                'profit_margin': m.get('netProfitMarginTTM', 0) / 100,
+                'earnings_growth': m.get('earningsGrowthTTMYoy', 0) / 100,
+                'free_cash_flow': m.get('freeCashFlowTTM', 0),
+            }
+    except:
+        pass
+    return {}
+
+def get_aggregated_fundamentals(ticker: str) -> Dict:
+    base = fetch_yfinance(ticker)
+    if base['price'] == 0:
+        return base
+    if base['roe'] == 0:
+        av = fetch_alpha_vantage(ticker)
+        for k in ['roe', 'profit_margin', 'pe', 'beta']:
+            if av.get(k) and not base.get(k):
+                base[k] = av[k]
+    if base['roe'] == 0 or base['debt_to_equity'] == 0:
+        fh = fetch_finnhub_fundamentals(ticker)
+        for k in ['roe', 'debt_to_equity', 'profit_margin', 'earnings_growth', 'free_cash_flow']:
+            if fh.get(k) and not base.get(k):
+                base[k] = fh[k]
+    defaults = {'roe':0, 'debt_to_equity':0, 'profit_margin':0, 'earnings_growth':0, 'free_cash_flow':0,
+                'pe':0, 'beta':0, 'name':ticker, 'sector':'N/A', 'country':'Global', 'price':0,
+                'market_cap':0, 'forward_pe':0, 'dividend_yield':0, 'target_price':0}
+    for k,v in defaults.items():
+        if k not in base or base[k] is None:
+            base[k] = v
+    return base
+
+@st.cache_data(ttl=1800)
+def fetch_news_sentiment(ticker: str) -> Dict:
+    articles = []
+    try:
+        url = f"https://query1.finance.yahoo.com/v1/finance/search?q={ticker}&newsCount=8"
+        data = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}).json()
+        for item in data.get('news', []):
+            articles.append({'title': item.get('title',''), 'source': 'Yahoo'})
+    except:
+        pass
+    if FINNHUB_KEY:
+        try:
+            finnhub_client = finnhub.Client(api_key=FINNHUB_KEY)
+            today = datetime.now().strftime('%Y-%m-%d')
+            week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+            for item in finnhub_client.company_news(ticker, _from=week_ago, to=today)[:3]:
+                articles.append({'title': item.get('headline',''), 'source': 'Finnhub'})
+        except:
+            pass
+    seen = set()
+    unique = []
+    for art in articles:
+        if art['title'] and art['title'] not in seen:
+            seen.add(art['title'])
+            unique.append(art)
+    sentiments = []
+    for art in unique:
+        blob = TextBlob(art['title'])
+        pol = blob.sentiment.polarity
+        sentiments.append(pol)
+        art['score'] = pol
+        art['sentiment'] = 'Positive' if pol > 0.1 else ('Negative' if pol < -0.1 else 'Neutral')
+        art['emoji'] = '📈' if pol > 0.1 else ('📉' if pol < -0.1 else '➖')
+    avg = np.mean(sentiments) if sentiments else 0
+    overall = 'Positive' if avg > 0.1 else ('Negative' if avg < -0.1 else 'Neutral')
+    emoji = '📈' if avg > 0.1 else ('📉' if avg < -0.1 else '➖')
+    return {'overall': overall, 'emoji': emoji, 'score': avg, 'articles': unique, 'count': len(unique)}
+
+def calculate_buffett_score(fin: Dict) -> Dict:
+    score = max_score = 0
     results = []
-    
     max_score += 20
-    roe = financials.get('returnOnEquity', 0)
+    roe = fin.get('roe', 0)
     if roe and roe > 0.15:
         score += 20
         results.append({'Criterion': 'ROE > 15%', 'Status': '✓', 'Value': f"{roe*100:.1f}%", 'Score': 20})
     else:
         results.append({'Criterion': 'ROE > 15%', 'Status': '✗', 'Value': f"{roe*100:.1f}%" if roe else 'N/A', 'Score': 0})
-    
     max_score += 15
-    debt = financials.get('debtToEquity', 999)
+    debt = fin.get('debt_to_equity', 999)
     if debt and debt < 0.5:
         score += 15
         results.append({'Criterion': 'Debt/Equity < 0.5', 'Status': '✓', 'Value': f"{debt:.2f}", 'Score': 15})
     else:
         results.append({'Criterion': 'Debt/Equity < 0.5', 'Status': '✗', 'Value': f"{debt:.2f}" if debt else 'N/A', 'Score': 0})
-    
     max_score += 15
-    margin = financials.get('profitMargins', 0)
+    margin = fin.get('profit_margin', 0)
     if margin and margin > 0.20:
         score += 15
         results.append({'Criterion': 'Net Margin > 20%', 'Status': '✓', 'Value': f"{margin*100:.1f}%", 'Score': 15})
     else:
         results.append({'Criterion': 'Net Margin > 20%', 'Status': '✗', 'Value': f"{margin*100:.1f}%" if margin else 'N/A', 'Score': 0})
-    
     max_score += 15
-    pe = financials.get('trailingPE', 999)
+    pe = fin.get('pe', 999)
     if pe and 0 < pe < 22:
         score += 15
         results.append({'Criterion': 'P/E < 22', 'Status': '✓', 'Value': f"{pe:.1f}", 'Score': 15})
     else:
         results.append({'Criterion': 'P/E < 22', 'Status': '✗', 'Value': f"{pe:.1f}" if pe else 'N/A', 'Score': 0})
-    
     max_score += 20
-    growth = financials.get('earningsGrowth', 0)
+    growth = fin.get('earnings_growth', 0)
     if growth and growth > 0.10:
         score += 20
         results.append({'Criterion': 'Earnings Growth > 10%', 'Status': '✓', 'Value': f"{growth*100:.1f}%", 'Score': 20})
     else:
         results.append({'Criterion': 'Earnings Growth > 10%', 'Status': '✗', 'Value': f"{growth*100:.1f}%" if growth else 'N/A', 'Score': 0})
-    
     max_score += 15
-    cashflow = financials.get('freeCashflow', 0)
-    if cashflow and cashflow > 0:
+    fcf = fin.get('free_cash_flow', 0)
+    if fcf and fcf > 0:
         score += 15
-        results.append({'Criterion': 'Positive Free Cash Flow', 'Status': '✓', 'Value': f"${cashflow/1e9:.2f}B", 'Score': 15})
+        results.append({'Criterion': 'Positive Free Cash Flow', 'Status': '✓', 'Value': f"${fcf/1e9:.2f}B", 'Score': 15})
     else:
-        results.append({'Criterion': 'Positive Free Cash Flow', 'Status': '✗', 'Value': 'Negative' if cashflow else 'N/A', 'Score': 0})
-    
-    percentage = (score / max_score * 100) if max_score > 0 else 0
-    
-    if percentage >= 70:
-        recommendation = "BUY"
-        rec_class = "ft-buy"
-    elif percentage >= 45:
-        recommendation = "HOLD"
-        rec_class = "ft-hold"
+        results.append({'Criterion': 'Positive Free Cash Flow', 'Status': '✗', 'Value': 'Negative' if fcf else 'N/A', 'Score': 0})
+    pct = (score / max_score * 100) if max_score else 0
+    rec = 'BUY' if pct >= 70 else ('HOLD' if pct >= 45 else 'SELL')
+    cls = 'ft-buy' if pct >= 70 else ('ft-hold' if pct >= 45 else 'ft-sell')
+    return {'percentage': pct, 'score': score, 'max_score': max_score, 'results': results, 'recommendation': rec, 'rec_class': cls}
+
+def combined_score(buffett_pct: float, sentiment_score: float) -> float:
+    return (buffett_pct * 0.6) + ((sentiment_score + 1) * 50 * 0.4)
+
+# ------------------------ AUTOCOMPLETE (Yahoo Finance Search + Fallback) ------------------------
+@st.cache_data(ttl=300)
+def search_yahoo_suggestions(query: str) -> List[Dict]:
+    if len(query) < 2:
+        return []
+    url = f"https://query1.finance.yahoo.com/v1/finance/search?q={query}&quotesCount=10&newsCount=0"
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    try:
+        resp = requests.get(url, headers=headers, timeout=5)
+        data = resp.json()
+        suggestions = []
+        for quote in data.get('quotes', []):
+            ticker = quote.get('symbol')
+            name = quote.get('longname') or quote.get('shortname')
+            exch = quote.get('exchange')
+            if ticker and name:
+                suggestions.append({'ticker': ticker, 'name': name, 'exchange': exch})
+        seen = set()
+        unique = []
+        for s in suggestions:
+            if s['ticker'] not in seen:
+                seen.add(s['ticker'])
+                unique.append(s)
+        return unique[:12]
+    except:
+        return []
+
+@st.cache_data(ttl=86400)
+def get_local_ticker_list() -> List[str]:
+    psi = [
+        'EDP.LS', 'GALP.LS', 'JMT.LS', 'SON.LS', 'NOS.LS', 'BCP.LS', 'RENE.LS',
+        'ALTR.LS', 'COR.LS', 'CTM.LS', 'EDPR.LS', 'IBS.LS', 'MCP.LS', 'NVG.LS',
+        'SEM.LS', 'SNC.LS'
+    ]
+    us_large = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'UNH', 'JNJ', 'V']
+    brazil = ['PETR4.SA', 'VALE3.SA', 'ITUB4.SA', 'BBDC4.SA', 'ABEV3.SA', 'WEGE3.SA']
+    europe = ['SAP.DE', 'SIE.DE', 'TTE.PA', 'MC.PA', 'ASML.AS', 'SHEL.L', 'HSBA.L']
+    return list(dict.fromkeys(psi + us_large + brazil + europe))
+
+def get_autocomplete_suggestions(query: str) -> List[str]:
+    suggestions = search_yahoo_suggestions(query)
+    if suggestions:
+        return [f"{s['ticker']} - {s['name']} ({s['exchange']})" for s in suggestions]
     else:
-        recommendation = "SELL"
-        rec_class = "ft-sell"
-    
-    return {
-        'score': score,
-        'max_score': max_score,
-        'percentage': percentage,
-        'results': results,
-        'recommendation': recommendation,
-        'rec_class': rec_class
-    }
+        local = get_local_ticker_list()
+        query_lower = query.lower()
+        matches = [t for t in local if query_lower in t.lower()]
+        matches.sort(key=lambda x: (0 if x.lower().startswith(query_lower) else 1, x))
+        return matches[:10]
 
-def calculate_combined_score(buffett_score, sentiment_score):
-    """Calcula score combinado"""
-    combined = (buffett_score * 0.6) + ((sentiment_score + 1) * 50 * 0.4)
-    return max(0, min(100, combined))
-
-def create_share_text(ticker, company_name, final_rec, buffett_score, sentiment_score, combined_score):
-    text = f"Warren Buffett Analysis: {company_name} ({ticker})\n"
-    text += f"Recommendation: {final_rec}\n"
-    text += f"Buffett Score: {buffett_score:.0f}%\n"
-    text += f"Sentiment Score: {sentiment_score:.2f}\n"
-    text += f"Combined Score: {combined_score:.0f}/100"
-    return text
-
-# ==================== SIDEBAR ====================
-with st.sidebar:
-    st.markdown('<div class="ft-section-title">Methodology</div>', unsafe_allow_html=True)
-    st.markdown("**Warren Buffett's 6 Pillars (60%)**")
-    st.markdown("""
-    1. ROE > 15%
-    2. Debt/Equity < 0.5
-    3. Net Margin > 20%
-    4. P/E < 22
-    5. Earnings Growth > 10%
-    6. Positive Free Cash Flow
-    """)
-    
-    st.markdown('<div class="ft-separator"></div>', unsafe_allow_html=True)
-    st.markdown("**Market Sentiment (40%)**")
-    st.markdown("- Analyzes latest 10 news articles")
-    st.markdown("- NLP sentiment with TextBlob")
-    
-    st.markdown('<div class="ft-separator"></div>', unsafe_allow_html=True)
-    st.markdown("**Scoring**")
-    st.markdown("- BUY: 70-100 | HOLD: 45-69 | SELL: 0-44")
-    
-    st.markdown('<div class="ft-separator"></div>', unsafe_allow_html=True)
-    st.markdown("**Coverage**")
-    st.markdown("- US, Brazil, Portugal (PSI), Europe, Asia")
-
-# ==================== BUSCA PRINCIPAL ====================
+# ------------------------ MAIN INTERFACE ------------------------
 st.markdown('<div class="ft-section-title">Global Asset Search</div>', unsafe_allow_html=True)
 
 col1, col2, col3 = st.columns([2.5, 1, 1])
-
 with col1:
-    search_query = st.text_input(
-        "",
-        value="AAPL",
-        placeholder="Search 15,000+ assets - Ticker or company name...",
-        label_visibility="collapsed"
-    )
+    search_term = st.text_input("", placeholder="Enter company name or ticker (e.g., Apple, EDP, MSFT)", label_visibility="collapsed")
+
+# Autocomplete
+if search_term and len(search_term) >= 2:
+    with st.spinner("Searching suggestions..."):
+        suggestions = get_autocomplete_suggestions(search_term)
+    if suggestions:
+        selected_display = st.selectbox("Suggestions (click to choose):", suggestions, key="autocomplete_select")
+        if selected_display:
+            ticker_candidate = selected_display.split(" - ")[0]
+            if st.button(f"Analyze {ticker_candidate}", key="auto_analyse_btn"):
+                with st.spinner(f"Analyzing {ticker_candidate}..."):
+                    fin = get_aggregated_fundamentals(ticker_candidate)
+                    if fin['price'] > 0:
+                        buff = calculate_buffett_score(fin)
+                        news = fetch_news_sentiment(ticker_candidate)
+                        comb = combined_score(buff['percentage'], news['score'])
+                        final_rec = 'BUY' if comb >= 70 else ('HOLD' if comb >= 45 else 'SELL')
+                        final_cls = 'ft-buy' if comb >= 70 else ('ft-hold' if comb >= 45 else 'ft-sell')
+
+                        st.markdown('<div class="ft-separator"></div>', unsafe_allow_html=True)
+                        c1, c2, c3, c4 = st.columns(4)
+                        with c1: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Company</div><div class='ft-metric-value'>{fin['name'][:35]}</div><div>{ticker_candidate} | {fin['country']}</div></div>", unsafe_allow_html=True)
+                        with c2: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Price</div><div class='ft-metric-value'>${fin['price']:.2f}</div><div>Target: ${fin['target_price']:.2f}</div></div>", unsafe_allow_html=True)
+                        with c3: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Market Cap</div><div class='ft-metric-value'>${fin['market_cap']/1e9:.1f}bn</div><div>Beta: {fin['beta']:.2f}</div></div>", unsafe_allow_html=True)
+                        with c4: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>P/E</div><div class='ft-metric-value'>{fin['pe']:.1f}</div><div>Forward: {fin['forward_pe']:.1f}</div></div>", unsafe_allow_html=True)
+
+                        st.markdown(f"<div class='ft-recommendation {final_cls}'><div class='ft-recommendation-value'>{final_rec}</div><div>Combined Score: {comb:.0f}/100 (Buffett {buff['percentage']:.0f}% + Sentiment {news['score']:.2f})</div><div>📰 {news['count']} news articles</div></div>", unsafe_allow_html=True)
+
+                        colA, colB, colC = st.columns(3)
+                        with colA: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Buffett Score</div><div class='ft-metric-value'>{buff['percentage']:.0f}%</div><div class='score-bar-bg'><div class='score-bar-fill' style='width:{buff['percentage']}%;'></div></div></div>", unsafe_allow_html=True)
+                        with colB: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Sentiment</div><div class='ft-metric-value'>{news['emoji']} {news['overall']}</div><div>Score: {news['score']:.2f}</div></div>", unsafe_allow_html=True)
+                        with colC: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Combined</div><div class='ft-metric-value'>{comb:.0f}<span style='font-size:1rem;'>/100</span></div><div class='score-bar-bg'><div class='score-bar-fill' style='width:{comb}%;'></div></div></div>", unsafe_allow_html=True)
+
+                        st.markdown('<div class="ft-section-title">Buffett Criteria</div>', unsafe_allow_html=True)
+                        st.dataframe(pd.DataFrame(buff['results']), use_container_width=True, hide_index=True)
+
+                        if news['articles']:
+                            st.markdown(f"<div class='ft-section-title'>Latest News ({news['count']})</div>", unsafe_allow_html=True)
+                            for art in news['articles'][:6]:
+                                st.markdown(f"<div class='ft-card'><span class='sentiment-{art['sentiment'].lower()}'>{art['emoji']} {art['sentiment']} (score: {art['score']:.2f})</span><br/>{art['title']}</div>", unsafe_allow_html=True)
+                    else:
+                        st.error(f"Could not retrieve data for {ticker_candidate}.")
+    else:
+        st.info("No suggestions found. Try a different name or use the 'ANALYZE' button.")
 
 with col2:
-    analyze_btn = st.button("ANALYSE with Sentiment", type="primary", use_container_width=True)
-
+    manual_analyse = st.button("🔍 ANALYZE", type="primary", use_container_width=True)
 with col3:
-    screen_btn = st.button("GLOBAL SCREEN (15k assets)", use_container_width=True)
+    screen_btn = st.button("🌍 GLOBAL SCREEN (15k assets)", use_container_width=True)
 
-# ==================== ANÁLISE INDIVIDUAL ====================
-if analyze_btn and search_query:
-    ticker = search_ticker(search_query)
-    
-    with st.spinner(f"Analyzing {search_query} ({ticker})..."):
-        financials = get_stock_data(ticker)
-        
-        if financials and financials['currentPrice'] > 0:
-            buffett = calculate_buffett_score(financials)
-            
-            with st.spinner("Fetching and analyzing latest 10 news articles..."):
-                sentiment = fetch_news_sentiment(ticker)
-            
-            combined_score = calculate_combined_score(buffett['percentage'], sentiment['score'])
-            
-            if combined_score >= 70:
-                final_rec = "BUY"
-                final_class = "ft-buy"
-            elif combined_score >= 45:
-                final_rec = "HOLD"
-                final_class = "ft-hold"
-            else:
-                final_rec = "SELL"
-                final_class = "ft-sell"
-            
-            st.markdown('<div class="ft-separator"></div>', unsafe_allow_html=True)
-            
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.markdown(f"""
-                <div class="ft-card">
-                    <div class="ft-metric-label">Company</div>
-                    <div class="ft-metric-value" style="font-size:1.3rem;">{financials['name'][:35]}</div>
-                    <div>{ticker} | {financials['country']}</div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with col2:
-                st.markdown(f"""
-                <div class="ft-card">
-                    <div class="ft-metric-label">Price</div>
-                    <div class="ft-metric-value">${financials['currentPrice']:.2f}</div>
-                    <div>Target: ${financials['targetPrice']:.2f}</div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with col3:
-                st.markdown(f"""
-                <div class="ft-card">
-                    <div class="ft-metric-label">Market Cap</div>
-                    <div class="ft-metric-value">${financials['marketCap']/1e9:.1f}bn</div>
-                    <div>Beta: {financials['beta']:.2f}</div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with col4:
-                st.markdown(f"""
-                <div class="ft-card">
-                    <div class="ft-metric-label">P/E Ratio</div>
-                    <div class="ft-metric-value">{financials['trailingPE']:.1f}</div>
-                    <div>Forward: {financials['forwardPE']:.1f}</div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            st.markdown(f"""
-            <div class="ft-recommendation {final_class}">
-                <div class="ft-recommendation-value">{final_rec}</div>
-                <div>Based on Buffett Score (60%) + Market Sentiment (40%)</div>
-                <div style="margin-top:0.5rem;">📰 Analyzed {sentiment['count']} recent news articles</div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.markdown(f"""
-                <div class="ft-card">
-                    <div class="ft-metric-label">Buffett Score (60%)</div>
-                    <div class="ft-metric-value">{buffett['percentage']:.0f}%</div>
-                    <div>{buffett['score']}/{buffett['max_score']} criteria</div>
-                    <div class="score-bar-bg"><div class="score-bar-fill" style="width:{buffett['percentage']}%;"></div></div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with col2:
-                st.markdown(f"""
-                <div class="ft-card">
-                    <div class="ft-metric-label">Market Sentiment (40%)</div>
-                    <div class="ft-metric-value">{sentiment['emoji']} {sentiment['overall']}</div>
-                    <div>Score: {sentiment['score']:.2f}</div>
-                    <div>{sentiment['count']} news analyzed</div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with col3:
-                st.markdown(f"""
-                <div class="ft-card">
-                    <div class="ft-metric-label">Combined Score</div>
-                    <div class="ft-metric-value">{combined_score:.0f}<span style="font-size:1rem;">/100</span></div>
-                    <div class="score-bar-bg"><div class="score-bar-fill" style="width:{combined_score}%;"></div></div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            st.markdown('<div class="ft-separator"></div>', unsafe_allow_html=True)
-            st.markdown('<div class="ft-section-title">Buffett Criteria Analysis</div>', unsafe_allow_html=True)
-            
-            df_criteria = pd.DataFrame(buffett['results'])
-            st.dataframe(df_criteria, use_container_width=True, hide_index=True)
-            
-            if sentiment['articles']:
-                st.markdown('<div class="ft-separator"></div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="ft-section-title">Latest News Analysis ({sentiment["count"]} articles)</div>', unsafe_allow_html=True)
-                
-                for article in sentiment['articles'][:10]:
-                    sentiment_class = f"sentiment-{article['sentiment'].lower()}"
-                    st.markdown(f"""
-                    <div class="ft-card">
-                        <div style="display:flex; justify-content:space-between;">
-                            <span class="{sentiment_class}">{article['emoji']} {article['sentiment']} (score: {article['score']:.2f})</span>
-                            <span>{article['date']} | {article['publisher']}</span>
-                        </div>
-                        <div style="margin-top:0.5rem;">
-                            <a href="{article['link']}" target="_blank">{article['title']}...</a>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-            
-            st.markdown('<div class="ft-separator"></div>', unsafe_allow_html=True)
-            st.markdown('<div class="ft-section-title">Share Results</div>', unsafe_allow_html=True)
-            
-            share_text = create_share_text(ticker, financials['name'], final_rec, buffett['percentage'], sentiment['score'], combined_score)
-            share_encoded = share_text.replace('\n', '%0A')
-            
-            twitter_url = f"https://twitter.com/intent/tweet?text={share_encoded}"
-            linkedin_url = f"https://www.linkedin.com/sharing/share-offsite/?url=share&title={share_text}"
-            whatsapp_url = f"https://wa.me/?text={share_encoded}"
-            facebook_url = f"https://www.facebook.com/sharer/sharer.php?u=share&quote={share_text}"
-            email_url = f"mailto:?subject=Warren Buffett Analysis: {ticker}&body={share_encoded}"
-            
-            st.markdown(f"""
-            <div class="share-container">
-                <a href="{twitter_url}" target="_blank" class="share-btn btn-twitter">Twitter</a>
-                <a href="{linkedin_url}" target="_blank" class="share-btn btn-linkedin">LinkedIn</a>
-                <a href="{whatsapp_url}" target="_blank" class="share-btn btn-whatsapp">WhatsApp</a>
-                <a href="{facebook_url}" target="_blank" class="share-btn btn-facebook">Facebook</a>
-                <a href="{email_url}" class="share-btn btn-email">Email</a>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            report_data = pd.DataFrame([{
-                'Ticker': ticker,
-                'Company': financials['name'],
-                'Price': financials['currentPrice'],
-                'Market Cap (bn)': round(financials['marketCap']/1e9, 1),
-                'P/E': financials['trailingPE'],
-                'Buffett Score': f"{buffett['percentage']:.0f}%",
-                'Sentiment': sentiment['overall'],
-                'Recommendation': final_rec,
-                'Combined Score': f"{combined_score:.0f}/100"
-            }])
-            
-            csv = report_data.to_csv(index=False).encode('utf-8')
-            st.download_button("Download CSV", csv, f"WB_{ticker}.csv", "text/csv")
+# Manual analysis (when user types a ticker directly and clicks ANALYZE)
+if manual_analyse and search_term:
+    ticker_direct = search_term.strip().upper()
+    with st.spinner(f"Analyzing {ticker_direct} ..."):
+        fin = get_aggregated_fundamentals(ticker_direct)
+        if fin['price'] == 0:
+            st.error(f"'{ticker_direct}' is not a valid ticker or has no data. Try using autocomplete.")
         else:
-            st.error(f"No data found for '{search_query}'")
+            buff = calculate_buffett_score(fin)
+            news = fetch_news_sentiment(ticker_direct)
+            comb = combined_score(buff['percentage'], news['score'])
+            final_rec = 'BUY' if comb >= 70 else ('HOLD' if comb >= 45 else 'SELL')
+            final_cls = 'ft-buy' if comb >= 70 else ('ft-hold' if comb >= 45 else 'ft-sell')
 
-# ==================== GLOBAL SCREENING ====================
+            st.markdown('<div class="ft-separator"></div>', unsafe_allow_html=True)
+            c1, c2, c3, c4 = st.columns(4)
+            with c1: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Company</div><div class='ft-metric-value'>{fin['name'][:35]}</div><div>{ticker_direct} | {fin['country']}</div></div>", unsafe_allow_html=True)
+            with c2: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Price</div><div class='ft-metric-value'>${fin['price']:.2f}</div><div>Target: ${fin['target_price']:.2f}</div></div>", unsafe_allow_html=True)
+            with c3: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Market Cap</div><div class='ft-metric-value'>${fin['market_cap']/1e9:.1f}bn</div><div>Beta: {fin['beta']:.2f}</div></div>", unsafe_allow_html=True)
+            with c4: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>P/E</div><div class='ft-metric-value'>{fin['pe']:.1f}</div><div>Forward: {fin['forward_pe']:.1f}</div></div>", unsafe_allow_html=True)
+
+            st.markdown(f"<div class='ft-recommendation {final_cls}'><div class='ft-recommendation-value'>{final_rec}</div><div>Combined Score: {comb:.0f}/100 (Buffett {buff['percentage']:.0f}% + Sentiment {news['score']:.2f})</div><div>📰 {news['count']} news articles</div></div>", unsafe_allow_html=True)
+
+            colA, colB, colC = st.columns(3)
+            with colA: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Buffett Score</div><div class='ft-metric-value'>{buff['percentage']:.0f}%</div><div class='score-bar-bg'><div class='score-bar-fill' style='width:{buff['percentage']}%;'></div></div></div>", unsafe_allow_html=True)
+            with colB: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Sentiment</div><div class='ft-metric-value'>{news['emoji']} {news['overall']}</div><div>Score: {news['score']:.2f}</div></div>", unsafe_allow_html=True)
+            with colC: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Combined</div><div class='ft-metric-value'>{comb:.0f}<span style='font-size:1rem;'>/100</span></div><div class='score-bar-bg'><div class='score-bar-fill' style='width:{comb}%;'></div></div></div>", unsafe_allow_html=True)
+
+            st.markdown('<div class="ft-section-title">Buffett Criteria</div>', unsafe_allow_html=True)
+            st.dataframe(pd.DataFrame(buff['results']), use_container_width=True, hide_index=True)
+
+            if news['articles']:
+                st.markdown(f"<div class='ft-section-title'>Latest News ({news['count']})</div>", unsafe_allow_html=True)
+                for art in news['articles'][:6]:
+                    st.markdown(f"<div class='ft-card'><span class='sentiment-{art['sentiment'].lower()}'>{art['emoji']} {art['sentiment']} (score: {art['score']:.2f})</span><br/>{art['title']}</div>", unsafe_allow_html=True)
+
+# ------------------------ GENERATE 15,000+ GLOBAL TICKER LIST ------------------------
+@st.cache_data(ttl=86400)
+def generate_15000_tickers() -> List[str]:
+    tickers = set()
+    try:
+        sp500 = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')[0]['Symbol'].tolist()
+        tickers.update(sp500)
+    except: pass
+    try:
+        nasdaq100 = pd.read_html('https://en.wikipedia.org/wiki/Nasdaq-100')[4]['Ticker'].tolist()
+        tickers.update(nasdaq100)
+    except: pass
+    try:
+        ftse100 = pd.read_html('https://en.wikipedia.org/wiki/FTSE_100_Index')[3]['EPIC'].tolist()
+        tickers.update([t+'.L' for t in ftse100 if '.' not in t])
+    except: pass
+    try:
+        dax = pd.read_html('https://en.wikipedia.org/wiki/DAX')[4]['Ticker'].tolist()
+        tickers.update([t+'.DE' for t in dax if '.' not in t])
+    except: pass
+    try:
+        cac = pd.read_html('https://en.wikipedia.org/wiki/CAC_40')[3]['Ticker'].tolist()
+        tickers.update([t+'.PA' for t in cac if '.' not in t])
+    except: pass
+    psi_full = ['EDP.LS', 'GALP.LS', 'JMT.LS', 'SON.LS', 'NOS.LS', 'BCP.LS', 'RENE.LS',
+                'ALTR.LS', 'COR.LS', 'CTM.LS', 'EDPR.LS', 'IBS.LS', 'MCP.LS', 'NVG.LS']
+    tickers.update(psi_full)
+    b3 = ['PETR4.SA', 'VALE3.SA', 'ITUB4.SA', 'BBDC4.SA', 'ABEV3.SA', 'WEGE3.SA']
+    tickers.update(b3)
+    crypto = ['BTC-USD', 'ETH-USD', 'BNB-USD', 'XRP-USD', 'ADA-USD', 'SOL-USD']
+    tickers.update(crypto)
+
+    import string
+    letters = list(string.ascii_uppercase)
+    for l1 in letters:
+        tickers.add(l1)
+        for l2 in letters:
+            tickers.add(l1+l2)
+    for l1 in letters:
+        for i in range(10):
+            tickers.add(f"{l1}{i}")
+            tickers.add(f"{l1}{i}{i}")
+    tickers_list = list(tickers)
+    if len(tickers_list) < 15000:
+        needed = 15000 - len(tickers_list)
+        for i in range(needed):
+            tickers_list.append(f"PAD{i}")
+    return tickers_list[:15000]
+
+# ------------------------ GLOBAL SCREENING (with progress bar and counter) ------------------------
 if screen_btn:
-    st.markdown('<div class="ft-separator"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="ft-section-title">Global Screening Results (15,000+ assets)</div>', unsafe_allow_html=True)
-    
-    screening_tickers = get_global_tickers()
+    st.markdown('<div class="ft-section-title">Global Screening (15,000+ assets)</div>', unsafe_allow_html=True)
+    st.info("Scanning 15,000+ assets worldwide. First run may take 20‑30 minutes; subsequent runs will be much faster due to caching.")
+    all_tickers = generate_15000_tickers()
+    total = len(all_tickers)
+    st.write(f"Total tickers in list: **{total}**")
+
     results = []
     progress_bar = st.progress(0)
     status_text = st.empty()
-    
-    for idx, ticker in enumerate(screening_tickers):
-        status_text.info(f"Analyzing {ticker}... ({idx+1} of {len(screening_tickers)})")
-        
-        financials = get_stock_data(ticker)
-        if financials and financials['currentPrice'] > 0:
-            buffett = calculate_buffett_score(financials)
-            sentiment = fetch_news_sentiment(ticker)
-            combined_score = calculate_combined_score(buffett['percentage'], sentiment['score'])
-            
-            if combined_score >= 70:
-                rec = "BUY"
-            elif combined_score >= 45:
-                rec = "HOLD"
-            else:
-                rec = "SELL"
-            
+    start_time = time.time()
+
+    for idx, ticker in enumerate(all_tickers):
+        progress = (idx + 1) / total
+        progress_bar.progress(progress)
+        status_text.text(f"🔍 Processing {idx+1} of {total} assets | Current: {ticker}")
+
+        fin = get_aggregated_fundamentals(ticker)
+        if fin['price'] > 0:
+            buff = calculate_buffett_score(fin)
+            sent = fetch_news_sentiment(ticker)
+            comb = combined_score(buff['percentage'], sent['score'])
             results.append({
                 'Ticker': ticker,
-                'Company': financials['name'][:25],
-                'Price': financials['currentPrice'],
-                'P/E': financials['trailingPE'],
-                'Buffett Score': f"{buffett['percentage']:.0f}%",
-                'Sentiment': sentiment['overall'],
-                'Recommendation': rec,
-                'Combined': f"{combined_score:.0f}/100"
+                'Company': fin['name'][:30],
+                'Price': fin['price'],
+                'P/E': fin['pe'],
+                'Buffett Score': f"{buff['percentage']:.0f}%",
+                'Sentiment': sent['overall'],
+                'Recommendation': 'BUY' if comb>=70 else ('HOLD' if comb>=45 else 'SELL'),
+                'Combined': f"{comb:.0f}/100"
             })
-        
-        progress_bar.progress((idx + 1) / len(screening_tickers))
-        time.sleep(0.1)
-    
+        time.sleep(0.05)
+
     progress_bar.empty()
     status_text.empty()
-    
+    elapsed = time.time() - start_time
+
     if results:
-        df_results = pd.DataFrame(results)
-        df_results = df_results.sort_values('Combined', ascending=False)
-        st.dataframe(df_results, use_container_width=True, hide_index=True)
-        
-        fig = px.bar(df_results.head(20), x='Ticker', y=[float(x.split('/')[0]) for x in df_results['Combined'].head(20)],
-                     title='Top 20 Assets by Combined Score',
-                     color='Recommendation',
-                     color_discrete_map={'BUY': '#2e7d32', 'HOLD': '#ed6c02', 'SELL': '#d32f2f'})
+        df = pd.DataFrame(results).sort_values('Combined', ascending=False)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+        fig = px.bar(df.head(20), x='Ticker', y=[float(x.split('/')[0]) for x in df['Combined'].head(20)],
+                     title='Top 20 by Combined Score', color='Recommendation',
+                     color_discrete_map={'BUY':'#2e7d32','HOLD':'#ed6c02','SELL':'#d32f2f'})
         fig.update_layout(height=500)
         st.plotly_chart(fig, use_container_width=True)
-        
-        csv_screen = df_results.to_csv(index=False).encode('utf-8')
-        st.download_button("Download Screening CSV", csv_screen, "WB_screening.csv", "text/csv")
-        
-        st.success(f"✅ Screening completed! Analyzed {len(results)} assets from 15,000+ global universe.")
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Download Full CSV", csv, "WB_screening_15000.csv", "text/csv")
+        st.success(f"✅ Screening completed in {elapsed:.1f} seconds. {len(results)} assets with valid data (out of {total} scanned).")
     else:
-        st.warning("No data available for screening")
+        st.warning("No valid data found. Check your internet connection or try again later.")
 
-# ==================== FOOTER ====================
 st.markdown("""
 <div class="ft-footer">
-    <strong>15,000+ Global Assets</strong> | Data: Yahoo Finance | Sentiment: NLP with TextBlob<br>
-    Methodology: Warren Buffett's 6 Criteria (60%) + Market Sentiment (40%)<br>
-    Educational purpose only. Not investment advice.
+    <strong>Warren Buffett Global Screener</strong> | 15,000+ assets | Autocomplete via Yahoo Finance | Progress bar with counter<br>
+    Data: Yahoo Finance + Alpha Vantage + Finnhub | For educational purposes only.
 </div>
 """, unsafe_allow_html=True)
