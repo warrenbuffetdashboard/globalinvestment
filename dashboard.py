@@ -1,4 +1,4 @@
-# dashboard.py - Safe dictionary access, no Finnhub
+# dashboard.py - Fixed for both local and cloud deployment
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -16,8 +16,17 @@ warnings.filterwarnings('ignore')
 
 st.set_page_config(page_title="Warren Buffett Global Screener", page_icon="📈", layout="wide")
 
-# ------------------------ API KEYS (optional) ------------------------
-ALPHA_VANTAGE_KEY = "GKOFM3JHT9YJ9HYO"  # Optional, only used if available
+# ------------------------ API KEYS (fixed for local/cloud) ------------------------
+# Try to get from secrets if running in cloud, otherwise use default
+try:
+    ALPHA_VANTAGE_KEY = st.secrets.get("ALPHA_VANTAGE_KEY", "GKOFM3JHT9YJ9HYO")
+except:
+    ALPHA_VANTAGE_KEY = "GKOFM3JHT9YJ9HYO"  # Default for local use
+
+try:
+    NEWS_API_KEY = st.secrets.get("NEWS_API_KEY", "")
+except:
+    NEWS_API_KEY = ""
 
 # ------------------------ CSS (unchanged) ------------------------
 st.markdown("""
@@ -64,7 +73,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ======================== DATA FUNCTIONS (Yahoo Finance only + Alpha Vantage optional) ========================
+# ======================== DATA FUNCTIONS ========================
 @st.cache_data(ttl=3600)
 def fetch_yfinance(ticker: str) -> Dict:
     try:
@@ -110,7 +119,7 @@ def fetch_yfinance(ticker: str) -> Dict:
 
 @st.cache_data(ttl=3600)
 def fetch_alpha_vantage(ticker: str) -> Dict:
-    if not ALPHA_VANTAGE_KEY:
+    if not ALPHA_VANTAGE_KEY or ALPHA_VANTAGE_KEY == "demo":
         return {}
     try:
         url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={ticker}&apikey={ALPHA_VANTAGE_KEY}"
@@ -286,6 +295,10 @@ col1, col2, col3 = st.columns([2.5, 1, 1])
 with col1:
     search_term = st.text_input("", placeholder="Enter company name or ticker (e.g., Apple, EDP, MSFT)", label_visibility="collapsed")
 
+# Initialize session state for analysis
+if 'analysis_result' not in st.session_state:
+    st.session_state.analysis_result = None
+
 if search_term and len(search_term) >= 2:
     with st.spinner("Searching suggestions..."):
         suggestions = get_autocomplete_suggestions(search_term)
@@ -300,30 +313,10 @@ if search_term and len(search_term) >= 2:
                         buff = calculate_buffett_score(fin)
                         news = fetch_news_sentiment(ticker_candidate)
                         comb = combined_score(buff['percentage'], news['score'])
-                        final_rec = 'BUY' if comb >= 70 else ('HOLD' if comb >= 45 else 'SELL')
-                        final_cls = 'ft-buy' if comb >= 70 else ('ft-hold' if comb >= 45 else 'ft-sell')
-
-                        st.markdown('<div class="ft-separator"></div>', unsafe_allow_html=True)
-                        c1, c2, c3, c4 = st.columns(4)
-                        with c1: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Company</div><div class='ft-metric-value'>{fin.get('name', ticker_candidate)[:35]}</div><div>{ticker_candidate} | {fin.get('country', 'Global')}</div></div>", unsafe_allow_html=True)
-                        with c2: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Price</div><div class='ft-metric-value'>${fin.get('price', 0):.2f}</div><div>Target: ${fin.get('target_price', 0):.2f}</div></div>", unsafe_allow_html=True)
-                        with c3: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Market Cap</div><div class='ft-metric-value'>${fin.get('market_cap', 0)/1e9:.1f}bn</div><div>Beta: {fin.get('beta', 0):.2f}</div></div>", unsafe_allow_html=True)
-                        with c4: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>P/E</div><div class='ft-metric-value'>{fin.get('pe', 0):.1f}</div><div>Forward: {fin.get('forward_pe', 0):.1f}</div></div>", unsafe_allow_html=True)
-
-                        st.markdown(f"<div class='ft-recommendation {final_cls}'><div class='ft-recommendation-value'>{final_rec}</div><div>Combined Score: {comb:.0f}/100 (Buffett {buff['percentage']:.0f}% + Sentiment {news['score']:.2f})</div><div>📰 {news['count']} news articles</div></div>", unsafe_allow_html=True)
-
-                        colA, colB, colC = st.columns(3)
-                        with colA: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Buffett Score</div><div class='ft-metric-value'>{buff['percentage']:.0f}%</div><div class='score-bar-bg'><div class='score-bar-fill' style='width:{buff['percentage']}%;'></div></div></div>", unsafe_allow_html=True)
-                        with colB: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Sentiment</div><div class='ft-metric-value'>{news['emoji']} {news['overall']}</div><div>Score: {news['score']:.2f}</div></div>", unsafe_allow_html=True)
-                        with colC: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Combined</div><div class='ft-metric-value'>{comb:.0f}<span style='font-size:1rem;'>/100</span></div><div class='score-bar-bg'><div class='score-bar-fill' style='width:{comb}%;'></div></div></div>", unsafe_allow_html=True)
-
-                        st.markdown('<div class="ft-section-title">Buffett Criteria</div>', unsafe_allow_html=True)
-                        st.dataframe(pd.DataFrame(buff['results']), use_container_width=True, hide_index=True)
-
-                        if news['articles']:
-                            st.markdown(f"<div class='ft-section-title'>Latest News ({news['count']})</div>", unsafe_allow_html=True)
-                            for art in news['articles'][:6]:
-                                st.markdown(f"<div class='ft-card'><span class='sentiment-{art['sentiment'].lower()}'>{art['emoji']} {art['sentiment']} (score: {art['score']:.2f})</span><br/><a href='{art['link']}' target='_blank'>{art['title']}</a><br/><span style='font-size:0.8rem; color:#666;'>{art.get('date', '')} | {art['source']}</span></div>", unsafe_allow_html=True)
+                        st.session_state.analysis_result = {
+                            'fin': fin, 'buff': buff, 'news': news, 'comb': comb,
+                            'ticker': ticker_candidate
+                        }
                     else:
                         st.error(f"Could not retrieve data for {ticker_candidate}.")
     else:
@@ -344,30 +337,44 @@ if manual_analyse and search_term:
             buff = calculate_buffett_score(fin)
             news = fetch_news_sentiment(ticker_direct)
             comb = combined_score(buff['percentage'], news['score'])
-            final_rec = 'BUY' if comb >= 70 else ('HOLD' if comb >= 45 else 'SELL')
-            final_cls = 'ft-buy' if comb >= 70 else ('ft-hold' if comb >= 45 else 'ft-sell')
+            st.session_state.analysis_result = {
+                'fin': fin, 'buff': buff, 'news': news, 'comb': comb,
+                'ticker': ticker_direct
+            }
 
-            st.markdown('<div class="ft-separator"></div>', unsafe_allow_html=True)
-            c1, c2, c3, c4 = st.columns(4)
-            with c1: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Company</div><div class='ft-metric-value'>{fin.get('name', ticker_direct)[:35]}</div><div>{ticker_direct} | {fin.get('country', 'Global')}</div></div>", unsafe_allow_html=True)
-            with c2: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Price</div><div class='ft-metric-value'>${fin.get('price', 0):.2f}</div><div>Target: ${fin.get('target_price', 0):.2f}</div></div>", unsafe_allow_html=True)
-            with c3: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Market Cap</div><div class='ft-metric-value'>${fin.get('market_cap', 0)/1e9:.1f}bn</div><div>Beta: {fin.get('beta', 0):.2f}</div></div>", unsafe_allow_html=True)
-            with c4: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>P/E</div><div class='ft-metric-value'>{fin.get('pe', 0):.1f}</div><div>Forward: {fin.get('forward_pe', 0):.1f}</div></div>", unsafe_allow_html=True)
-
-            st.markdown(f"<div class='ft-recommendation {final_cls}'><div class='ft-recommendation-value'>{final_rec}</div><div>Combined Score: {comb:.0f}/100 (Buffett {buff['percentage']:.0f}% + Sentiment {news['score']:.2f})</div><div>📰 {news['count']} news articles</div></div>", unsafe_allow_html=True)
-
-            colA, colB, colC = st.columns(3)
-            with colA: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Buffett Score</div><div class='ft-metric-value'>{buff['percentage']:.0f}%</div><div class='score-bar-bg'><div class='score-bar-fill' style='width:{buff['percentage']}%;'></div></div></div>", unsafe_allow_html=True)
-            with colB: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Sentiment</div><div class='ft-metric-value'>{news['emoji']} {news['overall']}</div><div>Score: {news['score']:.2f}</div></div>", unsafe_allow_html=True)
-            with colC: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Combined</div><div class='ft-metric-value'>{comb:.0f}<span style='font-size:1rem;'>/100</span></div><div class='score-bar-bg'><div class='score-bar-fill' style='width:{comb}%;'></div></div></div>", unsafe_allow_html=True)
-
-            st.markdown('<div class="ft-section-title">Buffett Criteria</div>', unsafe_allow_html=True)
-            st.dataframe(pd.DataFrame(buff['results']), use_container_width=True, hide_index=True)
-
-            if news['articles']:
-                st.markdown(f"<div class='ft-section-title'>Latest News ({news['count']})</div>", unsafe_allow_html=True)
-                for art in news['articles'][:6]:
-                    st.markdown(f"<div class='ft-card'><span class='sentiment-{art['sentiment'].lower()}'>{art['emoji']} {art['sentiment']} (score: {art['score']:.2f})</span><br/><a href='{art['link']}' target='_blank'>{art['title']}</a><br/><span style='font-size:0.8rem; color:#666;'>{art.get('date', '')} | {art['source']}</span></div>", unsafe_allow_html=True)
+# Display analysis results if available
+if st.session_state.analysis_result:
+    res = st.session_state.analysis_result
+    fin = res['fin']
+    buff = res['buff']
+    news = res['news']
+    comb = res['comb']
+    ticker_display = res['ticker']
+    
+    final_rec = 'BUY' if comb >= 70 else ('HOLD' if comb >= 45 else 'SELL')
+    final_cls = 'ft-buy' if comb >= 70 else ('ft-hold' if comb >= 45 else 'ft-sell')
+    
+    st.markdown('<div class="ft-separator"></div>', unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns(4)
+    with c1: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Company</div><div class='ft-metric-value'>{fin.get('name', ticker_display)[:35]}</div><div>{ticker_display} | {fin.get('country', 'Global')}</div></div>", unsafe_allow_html=True)
+    with c2: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Price</div><div class='ft-metric-value'>${fin.get('price', 0):.2f}</div><div>Target: ${fin.get('target_price', 0):.2f}</div></div>", unsafe_allow_html=True)
+    with c3: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Market Cap</div><div class='ft-metric-value'>${fin.get('market_cap', 0)/1e9:.1f}bn</div><div>Beta: {fin.get('beta', 0):.2f}</div></div>", unsafe_allow_html=True)
+    with c4: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>P/E</div><div class='ft-metric-value'>{fin.get('pe', 0):.1f}</div><div>Forward: {fin.get('forward_pe', 0):.1f}</div></div>", unsafe_allow_html=True)
+    
+    st.markdown(f"<div class='ft-recommendation {final_cls}'><div class='ft-recommendation-value'>{final_rec}</div><div>Combined Score: {comb:.0f}/100 (Buffett {buff['percentage']:.0f}% + Sentiment {news['score']:.2f})</div><div>📰 {news['count']} news articles</div></div>", unsafe_allow_html=True)
+    
+    colA, colB, colC = st.columns(3)
+    with colA: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Buffett Score</div><div class='ft-metric-value'>{buff['percentage']:.0f}%</div><div class='score-bar-bg'><div class='score-bar-fill' style='width:{buff['percentage']}%;'></div></div></div>", unsafe_allow_html=True)
+    with colB: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Sentiment</div><div class='ft-metric-value'>{news['emoji']} {news['overall']}</div><div>Score: {news['score']:.2f}</div></div>", unsafe_allow_html=True)
+    with colC: st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Combined</div><div class='ft-metric-value'>{comb:.0f}<span style='font-size:1rem;'>/100</span></div><div class='score-bar-bg'><div class='score-bar-fill' style='width:{comb}%;'></div></div></div>", unsafe_allow_html=True)
+    
+    st.markdown('<div class="ft-section-title">Buffett Criteria</div>', unsafe_allow_html=True)
+    st.dataframe(pd.DataFrame(buff['results']), use_container_width=True, hide_index=True)
+    
+    if news['articles']:
+        st.markdown(f"<div class='ft-section-title'>Latest News ({news['count']})</div>", unsafe_allow_html=True)
+        for art in news['articles'][:6]:
+            st.markdown(f"<div class='ft-card'><span class='sentiment-{art['sentiment'].lower()}'>{art['emoji']} {art['sentiment']} (score: {art['score']:.2f})</span><br/><a href='{art['link']}' target='_blank'>{art['title']}</a><br/><span style='font-size:0.8rem; color:#666;'>{art.get('date', '')} | {art['source']}</span></div>", unsafe_allow_html=True)
 
 # ======================== GENERATE 15K TICKERS ========================
 @st.cache_data(ttl=86400)
