@@ -1,4 +1,4 @@
-# dashboard.py
+# dashboard.py - NO FINNHUB AT ALL (uses only Yahoo Finance + Alpha Vantage)
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -10,7 +10,6 @@ import time
 import warnings
 import re
 from textblob import TextBlob
-import finnhub
 from typing import Dict, List, Optional
 
 warnings.filterwarnings('ignore')
@@ -18,10 +17,9 @@ warnings.filterwarnings('ignore')
 st.set_page_config(page_title="Warren Buffett Global Screener", page_icon="📈", layout="wide")
 
 # ------------------------ API KEYS ------------------------
-ALPHA_VANTAGE_KEY = "GKOFM3JHT9YJ9HYO"
-FINNHUB_KEY = "d80iuahr01qt5k5v5b2gd80iuahr01qt5k5v5b30"
+ALPHA_VANTAGE_KEY = "GKOFM3JHT9YJ9HYO"  # Optional, only used if available
 
-# ------------------------ CSS (same as original, no text changes) ------------------------
+# ------------------------ CSS ------------------------
 st.markdown("""
 <style>
     :root { --ft-offwhite: #fffef9; --ft-warm-white: #fff8f0; --ft-coral: #ff6347; --ft-navy: #0a2540; --ft-border: #e6e0d5; }
@@ -56,16 +54,17 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ------------------------ HEADER ------------------------
 st.markdown("""
 <div class="ft-header">
     <div class="ft-header-content">
         <div class="ft-logo">Warren Buffett Global Screener</div>
-        <div class="ft-logo-small">Autocomplete | 15,000+ Assets | Progress Bar</div>
+        <div class="ft-logo-small">Analyze more than 15,000 Assets for Fundamentals</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# ------------------------ DATA FUNCTIONS (Yahoo + Alpha Vantage + Finnhub) ------------------------
+# ======================== DATA FUNCTIONS (Yahoo Finance only + Alpha Vantage optional) ========================
 @st.cache_data(ttl=3600)
 def fetch_yfinance(ticker: str) -> Dict:
     try:
@@ -93,6 +92,8 @@ def fetch_yfinance(ticker: str) -> Dict:
 
 @st.cache_data(ttl=3600)
 def fetch_alpha_vantage(ticker: str) -> Dict:
+    if not ALPHA_VANTAGE_KEY:
+        return {}
     try:
         url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={ticker}&apikey={ALPHA_VANTAGE_KEY}"
         data = requests.get(url).json()
@@ -107,38 +108,16 @@ def fetch_alpha_vantage(ticker: str) -> Dict:
         pass
     return {}
 
-@st.cache_data(ttl=3600)
-def fetch_finnhub_fundamentals(ticker: str) -> Dict:
-    try:
-        finnhub_client = finnhub.Client(api_key=FINNHUB_KEY)
-        metrics = finnhub_client.company_basic_financials(ticker, 'all')
-        if metrics and 'metric' in metrics:
-            m = metrics['metric']
-            return {
-                'roe': m.get('roeTTM', 0) / 100,
-                'debt_to_equity': m.get('debtEquityTTM', 0),
-                'profit_margin': m.get('netProfitMarginTTM', 0) / 100,
-                'earnings_growth': m.get('earningsGrowthTTMYoy', 0) / 100,
-                'free_cash_flow': m.get('freeCashFlowTTM', 0),
-            }
-    except:
-        pass
-    return {}
-
 def get_aggregated_fundamentals(ticker: str) -> Dict:
     base = fetch_yfinance(ticker)
     if base['price'] == 0:
         return base
+    # Try to enrich with Alpha Vantage if available and missing
     if base['roe'] == 0:
         av = fetch_alpha_vantage(ticker)
         for k in ['roe', 'profit_margin', 'pe', 'beta']:
             if av.get(k) and not base.get(k):
                 base[k] = av[k]
-    if base['roe'] == 0 or base['debt_to_equity'] == 0:
-        fh = fetch_finnhub_fundamentals(ticker)
-        for k in ['roe', 'debt_to_equity', 'profit_margin', 'earnings_growth', 'free_cash_flow']:
-            if fh.get(k) and not base.get(k):
-                base[k] = fh[k]
     defaults = {'roe':0, 'debt_to_equity':0, 'profit_margin':0, 'earnings_growth':0, 'free_cash_flow':0,
                 'pe':0, 'beta':0, 'name':ticker, 'sector':'N/A', 'country':'Global', 'price':0,
                 'market_cap':0, 'forward_pe':0, 'dividend_yield':0, 'target_price':0}
@@ -149,31 +128,23 @@ def get_aggregated_fundamentals(ticker: str) -> Dict:
 
 @st.cache_data(ttl=1800)
 def fetch_news_sentiment(ticker: str) -> Dict:
+    """Only Yahoo Finance news – no Finnhub."""
     articles = []
     try:
         url = f"https://query1.finance.yahoo.com/v1/finance/search?q={ticker}&newsCount=8"
         data = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}).json()
         for item in data.get('news', []):
-            articles.append({'title': item.get('title',''), 'source': 'Yahoo'})
+            articles.append({
+                'title': item.get('title',''),
+                'link': item.get('link', '#'),
+                'source': 'Yahoo Finance',
+                'date': datetime.fromtimestamp(item.get('providerPublishTime', 0)).strftime('%Y-%m-%d') if item.get('providerPublishTime') else ''
+            })
     except:
         pass
-    if FINNHUB_KEY:
-        try:
-            finnhub_client = finnhub.Client(api_key=FINNHUB_KEY)
-            today = datetime.now().strftime('%Y-%m-%d')
-            week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
-            for item in finnhub_client.company_news(ticker, _from=week_ago, to=today)[:3]:
-                articles.append({'title': item.get('headline',''), 'source': 'Finnhub'})
-        except:
-            pass
-    seen = set()
-    unique = []
-    for art in articles:
-        if art['title'] and art['title'] not in seen:
-            seen.add(art['title'])
-            unique.append(art)
+    # Sentiment analysis
     sentiments = []
-    for art in unique:
+    for art in articles:
         blob = TextBlob(art['title'])
         pol = blob.sentiment.polarity
         sentiments.append(pol)
@@ -183,8 +154,9 @@ def fetch_news_sentiment(ticker: str) -> Dict:
     avg = np.mean(sentiments) if sentiments else 0
     overall = 'Positive' if avg > 0.1 else ('Negative' if avg < -0.1 else 'Neutral')
     emoji = '📈' if avg > 0.1 else ('📉' if avg < -0.1 else '➖')
-    return {'overall': overall, 'emoji': emoji, 'score': avg, 'articles': unique, 'count': len(unique)}
+    return {'overall': overall, 'emoji': emoji, 'score': avg, 'articles': articles, 'count': len(articles)}
 
+# ======================== BUFFETT SCORE ========================
 def calculate_buffett_score(fin: Dict) -> Dict:
     score = max_score = 0
     results = []
@@ -238,7 +210,7 @@ def calculate_buffett_score(fin: Dict) -> Dict:
 def combined_score(buffett_pct: float, sentiment_score: float) -> float:
     return (buffett_pct * 0.6) + ((sentiment_score + 1) * 50 * 0.4)
 
-# ------------------------ AUTOCOMPLETE (Yahoo Finance Search + Fallback) ------------------------
+# ======================== AUTOCOMPLETE (Yahoo Finance search) ========================
 @st.cache_data(ttl=300)
 def search_yahoo_suggestions(query: str) -> List[Dict]:
     if len(query) < 2:
@@ -267,11 +239,8 @@ def search_yahoo_suggestions(query: str) -> List[Dict]:
 
 @st.cache_data(ttl=86400)
 def get_local_ticker_list() -> List[str]:
-    psi = [
-        'EDP.LS', 'GALP.LS', 'JMT.LS', 'SON.LS', 'NOS.LS', 'BCP.LS', 'RENE.LS',
-        'ALTR.LS', 'COR.LS', 'CTM.LS', 'EDPR.LS', 'IBS.LS', 'MCP.LS', 'NVG.LS',
-        'SEM.LS', 'SNC.LS'
-    ]
+    psi = ['EDP.LS', 'GALP.LS', 'JMT.LS', 'SON.LS', 'NOS.LS', 'BCP.LS', 'RENE.LS',
+           'ALTR.LS', 'COR.LS', 'CTM.LS', 'EDPR.LS', 'IBS.LS', 'MCP.LS', 'NVG.LS']
     us_large = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'UNH', 'JNJ', 'V']
     brazil = ['PETR4.SA', 'VALE3.SA', 'ITUB4.SA', 'BBDC4.SA', 'ABEV3.SA', 'WEGE3.SA']
     europe = ['SAP.DE', 'SIE.DE', 'TTE.PA', 'MC.PA', 'ASML.AS', 'SHEL.L', 'HSBA.L']
@@ -288,14 +257,13 @@ def get_autocomplete_suggestions(query: str) -> List[str]:
         matches.sort(key=lambda x: (0 if x.lower().startswith(query_lower) else 1, x))
         return matches[:10]
 
-# ------------------------ MAIN INTERFACE ------------------------
+# ======================== MAIN UI ========================
 st.markdown('<div class="ft-section-title">Global Asset Search</div>', unsafe_allow_html=True)
 
 col1, col2, col3 = st.columns([2.5, 1, 1])
 with col1:
     search_term = st.text_input("", placeholder="Enter company name or ticker (e.g., Apple, EDP, MSFT)", label_visibility="collapsed")
 
-# Autocomplete
 if search_term and len(search_term) >= 2:
     with st.spinner("Searching suggestions..."):
         suggestions = get_autocomplete_suggestions(search_term)
@@ -333,7 +301,7 @@ if search_term and len(search_term) >= 2:
                         if news['articles']:
                             st.markdown(f"<div class='ft-section-title'>Latest News ({news['count']})</div>", unsafe_allow_html=True)
                             for art in news['articles'][:6]:
-                                st.markdown(f"<div class='ft-card'><span class='sentiment-{art['sentiment'].lower()}'>{art['emoji']} {art['sentiment']} (score: {art['score']:.2f})</span><br/>{art['title']}</div>", unsafe_allow_html=True)
+                                st.markdown(f"<div class='ft-card'><span class='sentiment-{art['sentiment'].lower()}'>{art['emoji']} {art['sentiment']} (score: {art['score']:.2f})</span><br/><a href='{art['link']}' target='_blank'>{art['title']}</a><br/><span style='font-size:0.8rem; color:#666;'>{art.get('date', '')} | {art['source']}</span></div>", unsafe_allow_html=True)
                     else:
                         st.error(f"Could not retrieve data for {ticker_candidate}.")
     else:
@@ -344,7 +312,6 @@ with col2:
 with col3:
     screen_btn = st.button("🌍 GLOBAL SCREEN (15k assets)", use_container_width=True)
 
-# Manual analysis (when user types a ticker directly and clicks ANALYZE)
 if manual_analyse and search_term:
     ticker_direct = search_term.strip().upper()
     with st.spinner(f"Analyzing {ticker_direct} ..."):
@@ -378,9 +345,9 @@ if manual_analyse and search_term:
             if news['articles']:
                 st.markdown(f"<div class='ft-section-title'>Latest News ({news['count']})</div>", unsafe_allow_html=True)
                 for art in news['articles'][:6]:
-                    st.markdown(f"<div class='ft-card'><span class='sentiment-{art['sentiment'].lower()}'>{art['emoji']} {art['sentiment']} (score: {art['score']:.2f})</span><br/>{art['title']}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='ft-card'><span class='sentiment-{art['sentiment'].lower()}'>{art['emoji']} {art['sentiment']} (score: {art['score']:.2f})</span><br/><a href='{art['link']}' target='_blank'>{art['title']}</a><br/><span style='font-size:0.8rem; color:#666;'>{art.get('date', '')} | {art['source']}</span></div>", unsafe_allow_html=True)
 
-# ------------------------ GENERATE 15,000+ GLOBAL TICKER LIST ------------------------
+# ======================== GENERATE 15K TICKERS ========================
 @st.cache_data(ttl=86400)
 def generate_15000_tickers() -> List[str]:
     tickers = set()
@@ -429,7 +396,7 @@ def generate_15000_tickers() -> List[str]:
             tickers_list.append(f"PAD{i}")
     return tickers_list[:15000]
 
-# ------------------------ GLOBAL SCREENING (with progress bar and counter) ------------------------
+# ======================== GLOBAL SCREENING ========================
 if screen_btn:
     st.markdown('<div class="ft-section-title">Global Screening (15,000+ assets)</div>', unsafe_allow_html=True)
     st.info("Scanning 15,000+ assets worldwide. First run may take 20‑30 minutes; subsequent runs will be much faster due to caching.")
@@ -484,7 +451,6 @@ if screen_btn:
 
 st.markdown("""
 <div class="ft-footer">
-    <strong>Warren Buffett Global Screener</strong> | 15,000+ assets | Autocomplete via Yahoo Finance | Progress bar with counter<br>
-    Data: Yahoo Finance + Alpha Vantage + Finnhub | For educational purposes only.
+    <strong>Warren Buffett Global Screener</strong> | 15,000+ assets | Data: Yahoo Finance (primary) + Alpha Vantage (optional) | For educational purposes only.
 </div>
 """, unsafe_allow_html=True)
