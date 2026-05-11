@@ -1,9 +1,7 @@
 streamlit
-yfinance
 pandas
 numpy
 plotly
+yfinance
 textblob
 requests
-lxml
-html5lib
