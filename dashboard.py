@@ -1,4 +1,4 @@
-# dashboard.py - Warren Buffett Global Screener with Popup Chat (Groq API)
+# dashboard.py - Warren Buffett Global Screener with Chat Dialog (Groq API)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -17,7 +17,7 @@ st.set_page_config(page_title="Warren Buffett Global Screener", page_icon="📈"
 # ------------------------ GROQ API KEY ------------------------
 GROQ_API_KEY = "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"
 
-# ------------------------ CSS (botão flutuante) ------------------------
+# ------------------------ CSS ------------------------
 st.markdown("""
 <style>
     :root { --ft-offwhite: #fffef9; --ft-warm-white: #fff8f0; --ft-coral: #ff6347; --ft-navy: #0a2540; --ft-border: #e6e0d5; }
@@ -45,45 +45,6 @@ st.markdown("""
     .score-bar-fill { background: var(--ft-coral); height: 6px; transition: width 0.5s ease; }
     .stProgress > div > div > div > div { background-color: var(--ft-coral); }
     .screening-container { border: 2px solid var(--ft-border); border-radius: 10px; padding: 20px; margin: 20px 0; background: white; }
-
-    /* Botão flutuante que abre o popover */
-    .floating-chat-btn {
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        background-color: #0a2540;
-        color: white;
-        width: 60px;
-        height: 60px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        font-size: 28px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        z-index: 999;
-        transition: all 0.3s ease;
-        border: none;
-        font-family: sans-serif;
-    }
-    .floating-chat-btn:hover {
-        background-color: #ff6347;
-        transform: scale(1.05);
-    }
-    @media (max-width: 768px) {
-        .floating-chat-btn { width: 50px; height: 50px; font-size: 24px; bottom: 15px; right: 15px; }
-    }
-    /* Esconder o botão Streamlit que usamos para alternar o popover */
-    button[data-testid="baseButton-secondary"] {
-        opacity: 0;
-        position: fixed;
-        bottom: 90px;
-        right: 20px;
-        width: 60px;
-        height: 60px;
-        pointer-events: none;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -265,7 +226,7 @@ def display_analysis(ticker: str, data: Dict):
     st.markdown('<div class="ft-section-title">📊 Buffett Criteria Analysis</div>', unsafe_allow_html=True)
     st.dataframe(pd.DataFrame(buff['results']), use_container_width=True, hide_index=True)
 
-# ======================== CHATBOT (WARREN BUFFETT ASSISTANT) ========================
+# ======================== CHATBOT (DIÁLOGO) ========================
 def get_chat_context() -> str:
     context_parts = []
     if 'df_final' in st.session_state and st.session_state['df_final'] is not None:
@@ -312,52 +273,16 @@ def responder_groq(pergunta: str) -> str:
     except Exception as e:
         return f"⚠️ Error: {str(e)}"
 
-# ======================== POPOVER CHAT (WARREN BUFFETT ASSISTANT) ========================
-# Botão flutuante que abre o popover (usando um botão Streamlit escondido + clique via JS)
-# Cria um botão Streamlit invisível que controla a abertura do popover
-if st.button("", key="hidden_chat_btn"):
-    st.session_state.show_chat_popover = not st.session_state.get("show_chat_popover", False)
+# ======================== MAIN UI ========================
+# Botão centralizado do chat (primeiro elemento, sem título)
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    if st.button("Warren Buffett Assistant", type="primary", use_container_width=True):
+        st.session_state.show_chat_dialog = True
 
-# CSS para posicionar o botão flutuante e esconder o botão original
-st.markdown("""
-<div class="floating-chat-btn" id="floatingChatBtn">💬</div>
-<script>
-    document.getElementById('floatingChatBtn').addEventListener('click', function() {
-        const hiddenBtn = document.querySelector('button[data-testid="baseButton-secondary"]');
-        if (hiddenBtn) hiddenBtn.click();
-    });
-</script>
-""", unsafe_allow_html=True)
+st.markdown("---")
 
-# Agora o popover (aparece quando show_chat_popover é True)
-if st.session_state.get("show_chat_popover", False):
-    with st.popover("🤖 Warren Buffett Assistant", use_container_width=True):
-        st.markdown("**Ask me about the screening results or individual analysis.**")
-        if "chat_history" not in st.session_state:
-            st.session_state.chat_history = []
-        # Mostrar mensagens anteriores
-        for msg in st.session_state.chat_history:
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
-        # Input do utilizador
-        if prompt := st.chat_input("Your question..."):
-            # Adicionar mensagem do user
-            st.session_state.chat_history.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
-            # Obter resposta
-            with st.spinner("Thinking..."):
-                response = responder_groq(prompt)
-            with st.chat_message("assistant"):
-                st.markdown(response)
-            st.session_state.chat_history.append({"role": "assistant", "content": response})
-            st.rerun()
-        if st.button("Close", use_container_width=True):
-            st.session_state.show_chat_popover = False
-            st.rerun()
-
-# ======================== MAIN UI (ANALYZE & SCREEN) ========================
-st.markdown('<div class="ft-section-title">🔍 Global Asset Search</div>', unsafe_allow_html=True)
+# Área de pesquisa (título removido)
 col1, col2, col3 = st.columns([2.5, 1, 1])
 with col1:
     search_term = st.text_input("", placeholder="Enter ticker (e.g., AAPL, MSFT, PETR4.SA)", label_visibility="collapsed")
@@ -463,6 +388,33 @@ if st.session_state.get('screening_active', False):
             st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
+# ======================== CHAT DIALOG ========================
+if st.session_state.get("show_chat_dialog", False):
+    @st.dialog("💬 Warren Buffett Assistant", width="large")
+    def chat_dialog():
+        st.caption("Ask about the results on screen (e.g., 'top BUY', 'P/E of AAPL', 'explain Buffett Score')")
+        if "dialog_messages" not in st.session_state:
+            st.session_state.dialog_messages = []
+        for msg in st.session_state.dialog_messages:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+        prompt = st.chat_input("Your question...")
+        if prompt:
+            st.session_state.dialog_messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            with st.spinner("Thinking..."):
+                response = responder_groq(prompt)
+            with st.chat_message("assistant"):
+                st.markdown(response)
+            st.session_state.dialog_messages.append({"role": "assistant", "content": response})
+            st.rerun()
+        if st.button("Close"):
+            st.session_state.show_chat_dialog = False
+            st.session_state.dialog_messages = []
+            st.rerun()
+    chat_dialog()
+
 # Footer
 st.markdown("""
 <div class="ft-footer">
@@ -470,6 +422,6 @@ st.markdown("""
     • Screens 15,000+ global assets using Buffett's criteria<br>
     • Real-time sentiment analysis from news sources<br>
     • Results include BUY/HOLD/SELL recommendations<br>
-    • 🤖 Warren Buffett Assistant – click the floating 💬 button
+    • 🤖 Warren Buffett Assistant – click the button above to open chat
 </div>
 """, unsafe_allow_html=True)
