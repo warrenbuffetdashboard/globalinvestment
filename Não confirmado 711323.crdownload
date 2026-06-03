@@ -1,0 +1,90 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import yfinance as yf
+import plotly.express as px
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+
+st.set_page_config(page_title="Warren Buffett Screener Pro", layout="wide")
+
+@st.cache_data(ttl=3600)
+def get_fundamentals(ticker):
+    try:
+        info = yf.Ticker(ticker).info
+        return {
+            "name": info.get("longName", ticker),
+            "price": info.get("currentPrice", 0),
+            "market_cap": info.get("marketCap", 0),
+            "pe": info.get("trailingPE", 0),
+            "roe": info.get("returnOnEquity", 0),
+            "margin": info.get("profitMargins", 0),
+            "debt": info.get("debtToEquity", 0),
+            "growth": info.get("earningsGrowth", 0),
+            "fcf": info.get("freeCashflow", 0),
+        }
+    except Exception:
+        return None
+
+def buffett_score(f):
+    score = 0
+    if f["roe"] and f["roe"] > 0.15: score += 15
+    if f["margin"] and f["margin"] > 0.15: score += 15
+    if f["debt"] and f["debt"] < 50: score += 10
+    if f["growth"] and f["growth"] > 0.10: score += 15
+    if f["fcf"] and f["fcf"] > 0: score += 15
+    if f["pe"] and f["pe"] < 25: score += 10
+    return min(score,100)
+
+def intrinsic_value(f):
+    pe = f["pe"] if f["pe"] and f["pe"] > 0 else 15
+    growth = max((f["growth"] or 0)*100,0)
+    return pe * (8.5 + 2*growth)
+
+st.title("📈 Warren Buffett Screener Pro")
+
+ticker = st.text_input("Ticker", "AAPL")
+
+if st.button("Analyze"):
+    data = get_fundamentals(ticker.upper())
+    if not data:
+        st.error("Ticker not found")
+    else:
+        score = buffett_score(data)
+        iv = intrinsic_value(data)
+
+        c1,c2,c3,c4 = st.columns(4)
+        c1.metric("Company", data["name"][:20])
+        c2.metric("Price", f"${data['price']:.2f}")
+        c3.metric("Buffett Score", f"{score}/100")
+        c4.metric("Intrinsic Model", f"{iv:.1f}")
+
+        df = pd.DataFrame([data]).T.reset_index()
+        df.columns = ["Metric","Value"]
+        st.dataframe(df, use_container_width=True)
+
+st.subheader("Global Mini Screener")
+
+default = ["AAPL","MSFT","GOOGL","AMZN","META","NVDA","ASML","BRK-B"]
+
+if st.button("Run Screener"):
+    rows = []
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        results = list(ex.map(get_fundamentals, default))
+
+    for r,t in zip(results, default):
+        if r:
+            rows.append({
+                "Ticker": t,
+                "Company": r["name"],
+                "Score": buffett_score(r),
+                "Price": r["price"]
+            })
+
+    if rows:
+        df = pd.DataFrame(rows).sort_values("Score", ascending=False)
+        st.dataframe(df, use_container_width=True)
+        fig = px.bar(df, x="Ticker", y="Score")
+        st.plotly_chart(fig, use_container_width=True)
+
+st.caption(f"Generated {datetime.now():%Y-%m-%d %H:%M}")

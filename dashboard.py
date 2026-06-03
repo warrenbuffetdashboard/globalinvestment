@@ -1,427 +1,285 @@
-# dashboard.py - Warren Buffett Global Screener with Chat Dialog (Groq API)
 import streamlit as st
 import pandas as pd
 import numpy as np
+import yfinance as yf
 import plotly.express as px
-from datetime import datetime
-import time
-import warnings
-from textblob import TextBlob
-from typing import Dict, List
-import re
 import requests
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 
-warnings.filterwarnings('ignore')
-st.set_page_config(page_title="Warren Buffett Global Screener", page_icon="📈", layout="wide")
+# 1. Page Configuration
+st.set_page_config(
+    page_title="Warren Buffett Global Screener Pro", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# ------------------------ GROQ API KEY ------------------------
-GROQ_API_KEY = "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"
+# --- GLOBAL AUTOSUGGEST ENGINE ---
 
-# ------------------------ CSS ------------------------
-st.markdown("""
-<style>
-    :root { --ft-offwhite: #fffef9; --ft-warm-white: #fff8f0; --ft-coral: #ff6347; --ft-navy: #0a2540; --ft-border: #e6e0d5; }
-    .stApp { background-color: var(--ft-offwhite); }
-    .ft-header { background: white; border-bottom: 2px solid var(--ft-coral); padding: 1.5rem 0; margin-bottom: 2rem; }
-    .ft-header-content { max-width: 1400px; margin: 0 auto; padding: 0 2rem; }
-    .ft-logo { font-family: 'Times New Roman', Times, serif; font-size: 2.5rem; font-weight: 700; color: var(--ft-navy); border-bottom: 3px solid var(--ft-coral); display: inline-block; }
-    .ft-logo-small { font-family: 'Times New Roman', Times, serif; font-size: 0.9rem; color: #6b6b6b; margin-top:0.5rem;}
-    .ft-section-title { font-family: 'Times New Roman', Times, serif; font-size: 0.9rem; font-weight: 600; color: var(--ft-navy); text-transform: uppercase; margin-bottom: 0.75rem; }
-    .ft-card { background: white; border: 2px solid var(--ft-border); padding: 1.5rem; margin: 1rem 0; transition: all 0.3s ease; }
-    .ft-card:hover { background: #fff8f0; border-color: var(--ft-coral); transform: translateY(-3px); }
-    .ft-metric-label { font-family: 'Times New Roman', Times, serif; font-size: 0.85rem; font-weight: 600; color: #6b6b6b; text-transform: uppercase; }
-    .ft-metric-value { font-family: 'Times New Roman', Times, serif; font-size: 2.2rem; font-weight: 700; color: var(--ft-navy); margin: 0.5rem 0; }
-    .ft-recommendation { font-family: 'Times New Roman', Times, serif; padding: 1.5rem; margin: 1.5rem 0; text-align: center; border: 2px solid; }
-    .ft-buy { background: #e8f5e9; border-color: #2e7d32; color: #2e7d32; }
-    .ft-hold { background: #fff3e0; border-color: #ed6c02; color: #ed6c02; }
-    .ft-sell { background: #ffebee; border-color: #d32f2f; color: #d32f2f; }
-    .ft-recommendation-value { font-size: 3.5rem; font-weight: 800; letter-spacing: 2px; }
-    .stTextInput > div > div > input { font-family: 'Times New Roman', Times, serif; font-size: 1.2rem; border: 2px solid var(--ft-border); padding: 1rem; }
-    .stButton > button { font-weight: 600; background: var(--ft-navy); color: white; border: none; padding: 0.8rem 2rem; width: 100%; }
-    .stButton > button:hover { background: var(--ft-coral); transform: translateY(-3px); }
-    .ft-separator { border-top: 2px solid var(--ft-border); margin: 2rem 0; }
-    .ft-footer { text-align: center; padding: 2rem; margin-top: 3rem; border-top: 2px solid var(--ft-border); font-size: 0.85rem; color: #6b6b6b; }
-    .score-bar-bg { background: var(--ft-border); height: 6px; margin-top: 1rem; }
-    .score-bar-fill { background: var(--ft-coral); height: 6px; transition: width 0.5s ease; }
-    .stProgress > div > div > div > div { background-color: var(--ft-coral); }
-    .screening-container { border: 2px solid var(--ft-border); border-radius: 10px; padding: 20px; margin: 20px 0; background: white; }
-</style>
-""", unsafe_allow_html=True)
-
-# ------------------------ HEADER ------------------------
-st.markdown("""
-<div class="ft-header">
-    <div class="ft-header-content">
-        <div class="ft-logo">Warren Buffett Global Screener</div>
-        <div class="ft-logo-small">Analyze 15,000+ Assets Worldwide | Professional Edition</div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# ======================== DATA FETCHING ========================
-@st.cache_data(ttl=3600)
-def fetch_stock_data(ticker: str) -> Dict:
+def fetch_autosuggest(query: str) -> list:
+    """
+    Scans the Yahoo search cluster for autosuggestions.
+    Maps company names or keywords to global tickers.
+    """
+    if not query or len(query) < 2:
+        return []
+    
+    url = f"https://query2.finance.yahoo.com/v1/finance/search?q={query}&quotesCount=8&newsCount=0"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    }
     try:
-        import yfinance as yf
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose', 0)
-        if price and price > 0:
-            return {
-                'success': True,
-                'name': info.get('longName') or info.get('shortName') or ticker,
-                'price': float(price),
-                'market_cap': float(info.get('marketCap', 0)),
-                'pe': float(info.get('trailingPE', 0)) if info.get('trailingPE') else 0,
-                'forward_pe': float(info.get('forwardPE', 0)) if info.get('forwardPE') else 0,
-                'roe': float(info.get('returnOnEquity', 0)) if info.get('returnOnEquity') else 0,
-                'debt_to_equity': float(info.get('debtToEquity', 0)) if info.get('debtToEquity') else 0,
-                'profit_margin': float(info.get('profitMargins', 0)) if info.get('profitMargins') else 0,
-                'earnings_growth': float(info.get('earningsGrowth', 0)) if info.get('earningsGrowth') else 0,
-                'free_cash_flow': float(info.get('freeCashflow', 0)) if info.get('freeCashflow') else 0,
-                'dividend_yield': float(info.get('dividendYield', 0)) if info.get('dividendYield') else 0,
-                'beta': float(info.get('beta', 0)) if info.get('beta') else 0,
-                'target_price': float(info.get('targetMeanPrice', 0)) if info.get('targetMeanPrice') else 0,
-                'sector': info.get('sector', 'N/A'),
-                'country': info.get('country', 'Global'),
-            }
-    except Exception:
-        pass
-    return {'success': False}
-
-@st.cache_data(ttl=1800)
-def fetch_news_sentiment(ticker: str) -> Dict:
-    articles = []
-    try:
-        import yfinance as yf
-        stock = yf.Ticker(ticker)
-        news_data = stock.news
-        if news_data:
-            for item in news_data[:5]:
-                articles.append({
-                    'title': item.get('title', ''),
-                    'link': item.get('link', '#'),
-                    'date': datetime.fromtimestamp(item.get('providerPublishTime', 0)).strftime('%Y-%m-%d') if item.get('providerPublishTime') else ''
-                })
-    except:
-        pass
-    sentiments = []
-    for art in articles:
-        blob = TextBlob(art['title'])
-        pol = blob.sentiment.polarity
-        sentiments.append(pol)
-        art['score'] = pol
-        art['sentiment'] = 'Positive' if pol > 0.1 else ('Negative' if pol < -0.1 else 'Neutral')
-        art['emoji'] = '📈' if pol > 0.1 else ('📉' if pol < -0.1 else '➖')
-    avg = np.mean(sentiments) if sentiments else 0
-    overall = 'Positive' if avg > 0.1 else ('Negative' if avg < -0.1 else 'Neutral')
-    emoji = '📈' if avg > 0.1 else ('📉' if avg < -0.1 else '➖')
-    return {'overall': overall, 'emoji': emoji, 'score': avg, 'articles': articles, 'count': len(articles)}
-
-# ======================== BUFFETT SCORE ========================
-def calculate_buffett_score(fin: Dict) -> Dict:
-    score = 0
-    max_score = 0
-    results = []
-    max_score += 20
-    roe = fin.get('roe', 0)
-    if roe and roe > 0.15:
-        score += 20
-        results.append({'Criterion': 'ROE > 15%', 'Status': '✓', 'Value': f"{roe*100:.1f}%", 'Score': 20})
-    else:
-        results.append({'Criterion': 'ROE > 15%', 'Status': '✗', 'Value': f"{roe*100:.1f}%" if roe else 'N/A', 'Score': 0})
-    max_score += 15
-    debt = fin.get('debt_to_equity', 999)
-    if debt and debt < 0.5:
-        score += 15
-        results.append({'Criterion': 'Debt/Equity < 0.5', 'Status': '✓', 'Value': f"{debt:.2f}", 'Score': 15})
-    else:
-        results.append({'Criterion': 'Debt/Equity < 0.5', 'Status': '✗', 'Value': f"{debt:.2f}" if debt else 'N/A', 'Score': 0})
-    max_score += 15
-    margin = fin.get('profit_margin', 0)
-    if margin and margin > 0.20:
-        score += 15
-        results.append({'Criterion': 'Net Margin > 20%', 'Status': '✓', 'Value': f"{margin*100:.1f}%", 'Score': 15})
-    else:
-        results.append({'Criterion': 'Net Margin > 20%', 'Status': '✗', 'Value': f"{margin*100:.1f}%" if margin else 'N/A', 'Score': 0})
-    max_score += 15
-    pe = fin.get('pe', 999)
-    if pe and 0 < pe < 22:
-        score += 15
-        results.append({'Criterion': 'P/E < 22', 'Status': '✓', 'Value': f"{pe:.1f}", 'Score': 15})
-    else:
-        results.append({'Criterion': 'P/E < 22', 'Status': '✗', 'Value': f"{pe:.1f}" if pe else 'N/A', 'Score': 0})
-    max_score += 20
-    growth = fin.get('earnings_growth', 0)
-    if growth and growth > 0.10:
-        score += 20
-        results.append({'Criterion': 'Earnings Growth > 10%', 'Status': '✓', 'Value': f"{growth*100:.1f}%", 'Score': 20})
-    else:
-        results.append({'Criterion': 'Earnings Growth > 10%', 'Status': '✗', 'Value': f"{growth*100:.1f}%" if growth else 'N/A', 'Score': 0})
-    max_score += 15
-    fcf = fin.get('free_cash_flow', 0)
-    if fcf and fcf > 0:
-        score += 15
-        results.append({'Criterion': 'Positive Free Cash Flow', 'Status': '✓', 'Value': f"${fcf/1e9:.2f}B", 'Score': 15})
-    else:
-        results.append({'Criterion': 'Positive Free Cash Flow', 'Status': '✗', 'Value': 'Negative' if fcf else 'N/A', 'Score': 0})
-    pct = (score / max_score * 100) if max_score else 0
-    rec = 'BUY' if pct >= 70 else ('HOLD' if pct >= 45 else 'SELL')
-    cls = 'ft-buy' if pct >= 70 else ('ft-hold' if pct >= 45 else 'ft-sell')
-    return {'percentage': pct, 'score': score, 'max_score': max_score, 'results': results, 'recommendation': rec, 'rec_class': cls}
-
-def combined_score(buffett_pct: float, sentiment_score: float) -> float:
-    sentiment_normalized = (sentiment_score + 1) * 50
-    return (buffett_pct * 0.6) + (sentiment_normalized * 0.4)
-
-@st.cache_data(ttl=86400)
-def generate_tickers() -> List[str]:
-    confirmed_tickers = [
-        'AAPL','MSFT','GOOGL','AMZN','NVDA','META','TSLA','NFLX','ADBE','CRM',
-        'ORCL','IBM','CSCO','INTC','AMD','QCOM','TXN','AVGO','ASML','SNPS',
-        'JPM','BAC','WFC','C','GS','MS','V','MA','AXP','BLK','SCHW','SPGI',
-        'JNJ','PFE','MRK','ABBV','LLY','TMO','DHR','UNH','CVS','CI','ANTM',
-        'WMT','TGT','COST','HD','LOW','MCD','SBUX','NKE','DIS','PEP','KO','PG',
-        'CAT','DE','BA','LMT','NOC','GE','MMM','HON','UPS','FDX','XOM','CVX',
-        'COP','EOG','SLB','PSX','VLO','MPC','BABA','JD','PDD','BIDU','NTES',
-        'TCEHY','NVO','RY','TD','SHOP','EDP.LS','GALP.LS','JMT.LS','SON.LS',
-        'NOS.LS','BCP.LS','PETR4.SA','VALE3.SA','ITUB4.SA','BBDC4.SA','ABEV3.SA',
-        'WEGE3.SA','SAP.DE','SIE.DE','TTE.PA','MC.PA','ASML.AS','SHEL.L','HSBA.L',
-        'PANW','CRWD','ZS','NET','SNOW','DDOG','MDB','PLTR','U','ROKU','SQ','SE',
-        'MELI','UBER','LYFT','ABNB','DASH','COIN','HOOD','O','STOR','WPC','PLD',
-        'CCI','AMT','EQIX','DLR'
-    ]
-    needed = max(0, 15000 - len(confirmed_tickers))
-    extra = [f"STK{i:05d}" for i in range(needed)]
-    return confirmed_tickers + extra
-
-def display_analysis(ticker: str, data: Dict):
-    buff = calculate_buffett_score(data)
-    news = fetch_news_sentiment(ticker)
-    comb = combined_score(buff['percentage'], news['score'])
-    final_rec = 'BUY' if comb >= 70 else ('HOLD' if comb >= 45 else 'SELL')
-    final_cls = 'ft-buy' if comb >= 70 else ('ft-hold' if comb >= 45 else 'ft-sell')
-    st.session_state['last_analysis_data'] = data
-    st.session_state['last_ticker'] = ticker
-    st.session_state['last_recommendation'] = final_rec
-    st.markdown('<div class="ft-separator"></div>', unsafe_allow_html=True)
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Company</div><div class='ft-metric-value'>{data.get('name', ticker)[:35]}</div><div>{ticker} | {data.get('country', 'Global')}</div></div>", unsafe_allow_html=True)
-    with c2:
-        st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Price</div><div class='ft-metric-value'>${data.get('price', 0):.2f}</div><div>Target: ${data.get('target_price', 0):.2f}</div></div>", unsafe_allow_html=True)
-    with c3:
-        mcap_bn = data.get('market_cap', 0) / 1e9
-        st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Market Cap</div><div class='ft-metric-value'>${mcap_bn:.1f}B</div><div>Beta: {data.get('beta', 0):.2f}</div></div>", unsafe_allow_html=True)
-    with c4:
-        st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>P/E Ratio</div><div class='ft-metric-value'>{data.get('pe', 0):.1f}</div><div>Forward: {data.get('forward_pe', 0):.1f}</div></div>", unsafe_allow_html=True)
-    st.markdown(f"<div class='ft-recommendation {final_cls}'><div class='ft-recommendation-value'>{final_rec}</div><div>Combined Score: {comb:.0f}/100 (Buffett {buff['percentage']:.0f}% + Sentiment {news['score']:.2f})</div><div>📰 {news['count']} news articles analyzed</div></div>", unsafe_allow_html=True)
-    colA, colB, colC = st.columns(3)
-    with colA:
-        st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Buffett Score</div><div class='ft-metric-value'>{buff['percentage']:.0f}%</div><div class='score-bar-bg'><div class='score-bar-fill' style='width:{buff['percentage']}%;'></div></div></div>", unsafe_allow_html=True)
-    with colB:
-        st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Sentiment</div><div class='ft-metric-value'>{news['emoji']} {news['overall']}</div><div>Score: {news['score']:.2f}</div></div>", unsafe_allow_html=True)
-    with colC:
-        st.markdown(f"<div class='ft-card'><div class='ft-metric-label'>Combined Score</div><div class='ft-metric-value'>{comb:.0f}<span style='font-size:1rem;'>/100</span></div><div class='score-bar-bg'><div class='score-bar-fill' style='width:{comb}%;'></div></div></div>", unsafe_allow_html=True)
-    st.markdown('<div class="ft-section-title">📊 Buffett Criteria Analysis</div>', unsafe_allow_html=True)
-    st.dataframe(pd.DataFrame(buff['results']), use_container_width=True, hide_index=True)
-
-# ======================== CHATBOT (DIÁLOGO) ========================
-def get_chat_context() -> str:
-    context_parts = []
-    if 'df_final' in st.session_state and st.session_state['df_final'] is not None:
-        df = st.session_state['df_final']
-        context_parts.append(f"Global screening: {len(df)} assets. Top 10 rows:\n{df.head(10).to_string()}")
-    if 'last_analysis_data' in st.session_state and st.session_state['last_analysis_data']:
-        data = st.session_state['last_analysis_data']
-        ticker = st.session_state.get('last_ticker', 'unknown')
-        context_parts.append(f"Individual analysis for {ticker}: Price=${data.get('price')}, P/E={data.get('pe')}, ROE={data.get('roe',0)*100:.1f}%, Rec={st.session_state.get('last_recommendation', 'N/A')}")
-    if not context_parts:
-        context_parts.append("No data yet. User can analyze a ticker or run global screening.")
-    return "\n".join(context_parts)
-
-def responder_groq(pergunta: str) -> str:
-    if not GROQ_API_KEY:
-        return "❌ API key missing."
-    try:
-        context = get_chat_context()
-        system_prompt = (
-            "You are Warren Buffett's investment assistant. Answer based ONLY on the context below. "
-            "Be concise and friendly. Respond in the same language as the user.\n\n"
-            f"Context:\n{context}"
-        )
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": pergunta}
-        ]
-        url = "https://api.groq.com/openai/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "model": "llama-3.1-8b-instant",
-            "messages": messages,
-            "temperature": 0.7,
-            "max_tokens": 600
-        }
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        response = requests.get(url, headers=headers, timeout=4)
         if response.status_code == 200:
-            return response.json()["choices"][0]["message"]["content"]
-        else:
-            return f"⚠️ API error {response.status_code}: {response.text}"
-    except Exception as e:
-        return f"⚠️ Error: {str(e)}"
+            quotes = response.json().get("quotes", [])
+            suggestions = []
+            for q in quotes:
+                symbol = q.get("symbol")
+                name = q.get("shortname") or q.get("longname") or symbol
+                exchange = q.get("exchange", "Global")
+                asset_type = q.get("quoteType", "EQUITY")
+                
+                # Exclude boring components if necessary
+                suggestions.append({
+                    "display": f"{symbol} - {name} ({exchange} | {asset_type})",
+                    "symbol": symbol
+                })
+            return suggestions
+    except Exception:
+        return []
+    return []
 
-# ======================== MAIN UI ========================
-# Botão centralizado do chat (primeiro elemento, sem título)
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    if st.button("Warren Buffett Assistant", type="primary", use_container_width=True):
-        st.session_state.show_chat_dialog = True
+# --- SAFE DATA EXTRACTION ENGINE ---
+
+@st.cache_data(ttl=3600)
+def get_fundamentals(ticker: str) -> dict:
+    """
+    Extracts global normalized financial data using the updated yfinance core backend.
+    """
+    try:
+        ticker_obj = yf.Ticker(ticker.strip().upper())
+        info = ticker_obj.info
+        
+        if not info or "price" in info and info["price"] is None:
+            return None
+            
+        # Extract currency with fallback
+        currency = info.get("currency", "USD")
+        
+        return {
+            "ticker": ticker.upper(),
+            "name": info.get("longName") or info.get("shortName") or ticker.upper(),
+            "price": info.get("currentPrice") or info.get("regularMarketPrice") or 0.0,
+            "market_cap": info.get("marketCap", 0),
+            "pe": info.get("trailingPE") or info.get("forwardPE", None),
+            "eps": info.get("trailingEps", None),
+            "roe": info.get("returnOnEquity", None),         # e.g., 0.18 for 18%
+            "margin": info.get("profitMargins", None),       # e.g., 0.15 for 15%
+            "debt_to_equity": info.get("debtToEquity", None),# e.g., 85.0 for 85%
+            "growth": info.get("earningsGrowth", None),      # e.g., 0.12 for 12%
+            "fcf": info.get("freeCashflow") or info.get("operatingCashflow", None),
+            "currency": currency
+        }
+    except Exception:
+        return None
+
+# --- VALUE INVESTING LOGIC RATIOS ---
+
+def calculate_buffett_score(f: dict) -> tuple:
+    score = 0
+    breakdown = {}
+    
+    # 1. Return on Equity (ROE >= 15%)
+    roe_val = f.get("roe") or 0.0
+    if roe_val >= 0.15:
+        score += 20
+        breakdown["ROE (>= 15%)"] = "✅ Excellent"
+    else:
+        breakdown["ROE (>= 15%)"] = f"❌ Weak ({roe_val*100:.1f}%)"
+
+    # 2. Operating Margins (>= 15% - Economic Moat Indicator)
+    margin_val = f.get("margin") or 0.0
+    if margin_val >= 0.15:
+        score += 20
+        breakdown["Profit Margin (>= 15%)"] = "✅ High Moat"
+    else:
+        breakdown["Profit Margin (>= 15%)"] = f"❌ Compressed ({margin_val*100:.1f}%)"
+
+    # 3. Leverage Control (Debt-to-Equity <= 100%)
+    debt_val = f.get("debt_to_equity") or 0.0
+    if 0 < debt_val <= 100:
+        score += 15
+        breakdown["Debt/Equity (<= 100%)"] = "✅ Balanced Leverage"
+    elif debt_val == 0:
+        score += 15
+        breakdown["Debt/Equity (<= 100%)"] = "✅ Zero Debt Risk"
+    else:
+        breakdown["Debt/Equity (<= 100%)"] = f"❌ High Debt Risk ({debt_val:.1f}%)"
+
+    # 4. Momentum / Expansion Growth (>= 10%)
+    growth_val = f.get("growth") or 0.0
+    if growth_val >= 0.10:
+        score += 15
+        breakdown["Earnings Growth (>= 10%)"] = "✅ Compounding"
+    else:
+        breakdown["Earnings Growth (>= 10%)"] = f"❌ Slow Growth ({growth_val*100:.1f}%)"
+
+    # 5. Free Cash Flow Health
+    fcf_val = f.get("fcf") or 0
+    if fcf_val > 0:
+        score += 15
+        breakdown["Free Cash Flow Status"] = "✅ Cash Machine"
+    else:
+        breakdown["Free Cash Flow Status"] = "❌ Capital Destructive"
+
+    # 6. Valuation Entry Point (P/E Ratio <= 25)
+    pe_val = f.get("pe") or 0
+    if 0 < pe_val <= 25:
+        score += 15
+        breakdown["Valuation Guardrail (P/E <= 25)"] = "✅ Fair Price"
+    else:
+        breakdown["Valuation Guardrail (P/E <= 25)"] = f"❌ Premium Multiples (P/E: {pe_val:.1f})"
+
+    return min(score, 100), breakdown
+
+def calculate_intrinsic_value(f: dict) -> float:
+    """Benjamin Graham Formula: V = EPS * (8.5 + 2 * g)"""
+    eps = f.get("eps")
+    growth = f.get("growth") or 0.0
+    if not eps or eps <= 0:
+        return 0.0  
+    growth_percentage = max(growth * 100, 0.0) 
+    return max(eps * (8.5 + (2 * growth_percentage)), 0.0)
+
+
+# --- LAYOUT INTERFACE DESIGN ---
+
+st.title("📈 Warren Buffett Global Screener Pro")
+st.markdown("Search and filter equities worldwide using specialized quantitative analysis parameters.")
+
+col_sidebar, col_main = st.columns([1.2, 3])
+
+with col_sidebar:
+    st.subheader("Global Discovery Hub")
+    
+    # Text Input triggering the autosuggest logic
+    search_term = st.text_input("Search Company Name or Ticker:", placeholder="e.g., Apple, Petrobras, LVMH...")
+    
+    target_ticker = None
+    if len(search_term) >= 2:
+        with st.spinner("Scanning directory nodes..."):
+            items = fetch_autosuggest(search_term)
+        if items:
+            mapping = {item["display"]: item["symbol"] for item in items}
+            chosen_item = st.selectbox("Select exact security matching target:", options=list(mapping.keys()))
+            if chosen_item:
+                target_ticker = mapping[chosen_item]
+        else:
+            st.warning("No matches cataloged for your string query.")
+
+    st.markdown("---")
+    with st.form("direct_ticker_bypass"):
+        override_ticker = st.text_input("Or bypass input with an exact Ticker:", value="AAPL")
+        submitted_bypass = st.form_submit_button("Force Analytics Engine")
+        
+    if submitted_bypass:
+        target_ticker = override_ticker
+
+    st.markdown("---")
+    st.subheader("Global Benchmark Targets")
+    default_presets = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "ASML", "BRK-B", "PETR4.SA"]
+    st.write(", ".join(default_presets))
+    trigger_batch = st.button("Execute Multi-Thread Screener", use_container_width=True)
+
+with col_main:
+    # 1. INDIVIDUAL DATA ANALYTICS DISCOVERY
+    if target_ticker:
+        st.session_state.persisted_ticker = target_ticker
+
+    if "persisted_ticker" in st.session_state:
+        active_target = st.session_state.persisted_ticker
+        
+        with st.spinner(f"Running secure validation pipeline for {active_target}..."):
+            data_metrics = get_fundamentals(active_target)
+            
+        if not data_metrics:
+            st.error(f"❌ Target '{active_target}' could not recover a clean dataset profile. Check connections or try standard tickers.")
+        else:
+            final_score, rules_check = calculate_buffett_score(data_metrics)
+            target_iv = calculate_intrinsic_value(data_metrics)
+            price_now = data_metrics["price"]
+            curr_sign = data_metrics["currency"]
+            
+            st.subheader(f"Analysis Snapshot: {data_metrics['name']} ({data_metrics['ticker']})")
+            
+            # Metric Rows KPIs
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Market Price", f"{price_now:.2f} {curr_sign}")
+            m2.metric("Buffett Checklist Score", f"{final_score}/100")
+            
+            if target_iv > 0:
+                safety_margin = ((target_iv - price_now) / price_now) * 100
+                m3.metric("Graham Target Price", f"{target_iv:.2f} {curr_sign}", delta=f"{safety_margin:.1f}% Margin")
+            else:
+                m3.metric("Graham Target Price", "Inapplicable", help="Incompatible for net negative earnings entities.")
+                
+            m4.metric("Market Capitalization", f"{data_metrics['market_cap']:,} {curr_sign}")
+
+            # Visual Splits
+            left_split, right_split = st.columns([1, 1])
+            with left_split:
+                st.markdown("**Core Asset Properties Collected:**")
+                view_df = pd.DataFrame([data_metrics]).T.reset_index()
+                view_df.columns = ["Metric Structure", "Parsed Profile Value"]
+                st.dataframe(view_df, use_container_width=True, hide_index=True)
+                
+            with right_split:
+                st.markdown("**Buffett Philosophy Audit Logs:**")
+                audit_df = pd.DataFrame(list(rules_check.items()), columns=["Audit Standard Rules", "Result Status"])
+                st.dataframe(audit_df, use_container_width=True, hide_index=True)
+
+    # 2. BATCH BROWSER SCREENER PIPELINE
+    if trigger_batch:
+        st.subheader("📊 Cross-Border Multi-Thread Matrix Matrix Monitoring")
+        
+        with st.spinner("Extracting parameters concurrently over 8 background nodes..."):
+            collected_rows = []
+            with ThreadPoolExecutor(max_workers=len(default_presets)) as manager:
+                batch_responses = list(manager.map(get_fundamentals, default_presets))
+
+            for block in batch_responses:
+                if block:
+                    computed_score, _ = calculate_buffett_score(block)
+                    computed_iv = calculate_intrinsic_value(block)
+                    
+                    spread = f"{((computed_iv - block['price']) / block['price']) * 100:.1f}%" if computed_iv > 0 else "Inapplicable"
+                    
+                    collected_rows.append({
+                        "Symbol": block["ticker"],
+                        "Corporate Asset Name": block["name"],
+                        "Buffett Score": computed_score,
+                        "Price Point": f"{block['price']:.2f} {block['currency']}",
+                        "P/E Metric": f"{block['pe']:.1f}" if block["pe"] else "N/A",
+                        "Graham Fair Value": f"{computed_iv:.2f} {block['currency']}" if computed_iv > 0 else "N/A",
+                        "Target Margin Spread": spread
+                    })
+
+        if collected_rows:
+            output_table_df = pd.DataFrame(collected_rows).sort_values("Buffett Score", ascending=False)
+            st.dataframe(output_table_df, use_container_width=True, hide_index=True)
+            
+            chart_fig = px.bar(
+                output_table_df, 
+                x="Symbol", 
+                y="Buffett Score",
+                color="Buffett Score",
+                text_auto=True,
+                title="Consolidated Asset Performance Vector Alignment Index",
+                color_continuous_scale=px.colors.sequential.Viridis
+            )
+            st.plotly_chart(chart_fig, use_container_width=True)
+        else:
+            st.error("Severe Network Blockade Detected. Destination interface rate limited.")
 
 st.markdown("---")
-
-# Área de pesquisa (título removido)
-col1, col2, col3 = st.columns([2.5, 1, 1])
-with col1:
-    search_term = st.text_input("", placeholder="Enter ticker (e.g., AAPL, MSFT, PETR4.SA)", label_visibility="collapsed")
-with col2:
-    analyze_clicked = st.button("🔍 ANALYZE", type="primary", use_container_width=True)
-with col3:
-    screen_btn = st.button("🌍 SCREEN 15K+ ASSETS", type="primary", use_container_width=True)
-
-if analyze_clicked and search_term and search_term.strip():
-    ticker = search_term.strip().upper()
-    with st.spinner(f"Analyzing {ticker}..."):
-        data = fetch_stock_data(ticker)
-        if data.get('success'):
-            display_analysis(ticker, data)
-            if 'df_final' in st.session_state:
-                del st.session_state['df_final']
-        else:
-            st.error(f"Could not retrieve data for {ticker}")
-            st.info("Try AAPL, MSFT, or GOOGL first")
-
-if screen_btn:
-    st.session_state['screening_active'] = True
-
-if st.session_state.get('screening_active', False):
-    st.markdown('<div class="screening-container">', unsafe_allow_html=True)
-    st.markdown('<div class="ft-section-title">🌍 GLOBAL SCREENING: 15,000+ ASSETS</div>', unsafe_allow_html=True)
-    with st.spinner("Generating ticker list..."):
-        all_tickers = generate_tickers()
-    total = len(all_tickers)
-    st.info(f"Total assets to screen: {total:,}")
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    stats_text = st.empty()
-    results_table = st.empty()
-    results = []
-    start_time = time.time()
-    processed = 0
-    for ticker in all_tickers:
-        processed += 1
-        progress_bar.progress(processed/total)
-        elapsed = time.time() - start_time
-        if processed > 0 and elapsed > 0:
-            rate = processed / elapsed
-            eta = (total - processed) / rate if rate > 0 else 0
-            status_text.text(f"Processing: {processed:,}/{total:,} | Rate: {rate:.1f}/sec | ETA: {eta/60:.1f} min")
-            stats_text.text(f"Valid assets found: {len(results)}")
-        data = fetch_stock_data(ticker)
-        if data.get('success') and data.get('price', 0) > 0:
-            buff = calculate_buffett_score(data)
-            sent = fetch_news_sentiment(ticker)
-            comb = combined_score(buff['percentage'], sent['score'])
-            results.append({
-                'Ticker': ticker,
-                'Company': data.get('name', ticker)[:35],
-                'Price': round(data.get('price', 0), 2),
-                'P/E': round(data.get('pe', 0), 1) if data.get('pe', 0) > 0 else 'N/A',
-                'Mkt Cap (B)': round(data.get('market_cap', 0)/1e9, 1),
-                'ROE %': round(data.get('roe', 0)*100, 1),
-                'Buffett %': round(buff['percentage'], 1),
-                'Buy/Hold/Sell': 'BUY' if comb >= 70 else ('HOLD' if comb >= 45 else 'SELL'),
-                'Score': round(comb, 1)
-            })
-            if len(results) % 10 == 0:
-                df_show = pd.DataFrame(results).sort_values('Score', ascending=False)
-                results_table.dataframe(df_show.head(20), use_container_width=True, hide_index=True)
-        time.sleep(0.05)
-    progress_bar.empty()
-    status_text.empty()
-    stats_text.empty()
-    elapsed_total = time.time() - start_time
-    if results:
-        st.success(f"Screening completed in {elapsed_total/60:.1f} minutes! Found {len(results)} valid assets.")
-        df_final = pd.DataFrame(results).sort_values('Score', ascending=False)
-        st.session_state['df_final'] = df_final
-        col1, col2 = st.columns(2)
-        with col1:
-            fig = px.bar(df_final.head(15), x='Ticker', y='Score', color='Buy/Hold/Sell',
-                         title='Top 15 Assets by Combined Score',
-                         color_discrete_map={'BUY':'#2e7d32','HOLD':'#ed6c02','SELL':'#d32f2f'})
-            fig.update_layout(height=400)
-            st.plotly_chart(fig, use_container_width=True)
-        with col2:
-            rec_counts = df_final['Buy/Hold/Sell'].value_counts()
-            fig_pie = px.pie(values=rec_counts.values, names=rec_counts.index, title='Recommendation Distribution',
-                             color=rec_counts.index, color_discrete_map={'BUY':'#2e7d32','HOLD':'#ed6c02','SELL':'#d32f2f'})
-            fig_pie.update_layout(height=400)
-            st.plotly_chart(fig_pie, use_container_width=True)
-        st.markdown("### Complete Screening Results")
-        st.dataframe(df_final, use_container_width=True, hide_index=True)
-        csv = df_final.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download CSV", csv, f"buffett_screen_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv", "text/csv")
-        buy_list = df_final[df_final['Buy/Hold/Sell'] == 'BUY']
-        if not buy_list.empty:
-            st.markdown(f"### Top BUY Recommendations ({len(buy_list)} found)")
-            st.dataframe(buy_list[['Ticker','Company','Score','ROE %','P/E']].head(20), use_container_width=True, hide_index=True)
-        if st.button("Run New Screening"):
-            st.session_state['screening_active'] = False
-            st.rerun()
-    else:
-        st.warning("No valid assets found. Try again later.")
-        if st.button("Try Again"):
-            st.session_state['screening_active'] = False
-            st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# ======================== CHAT DIALOG ========================
-if st.session_state.get("show_chat_dialog", False):
-    @st.dialog("💬 Warren Buffett Assistant", width="large")
-    def chat_dialog():
-        st.caption("Ask about the results on screen (e.g., 'top BUY', 'P/E of AAPL', 'explain Buffett Score')")
-        if "dialog_messages" not in st.session_state:
-            st.session_state.dialog_messages = []
-        for msg in st.session_state.dialog_messages:
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
-        prompt = st.chat_input("Your question...")
-        if prompt:
-            st.session_state.dialog_messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
-            with st.spinner("Thinking..."):
-                response = responder_groq(prompt)
-            with st.chat_message("assistant"):
-                st.markdown(response)
-            st.session_state.dialog_messages.append({"role": "assistant", "content": response})
-            st.rerun()
-        if st.button("Close"):
-            st.session_state.show_chat_dialog = False
-            st.session_state.dialog_messages = []
-            st.rerun()
-    chat_dialog()
-
-# Footer
-st.markdown("""
-<div class="ft-footer">
-    <strong>Warren Buffett Global Screener</strong> | Professional Edition<br>
-    • Screens 15,000+ global assets using Buffett's criteria<br>
-    • Real-time sentiment analysis from news sources<br>
-    • Results include BUY/HOLD/SELL recommendations<br>
-    • 🤖 Warren Buffett Assistant – click the button above to open chat
-</div>
-""", unsafe_allow_html=True)
+st.caption(f"System monitoring logs clear • Core execution stack synced: {datetime.now():%Y-%m-%d %H:%M:%S}")
